@@ -1,0 +1,24 @@
+hopsworks
+pandas
+numpy
+scikit-learn
+xgboost
+streamlit
+shap
+requests
+python-dotenv
+jupyter
+matplotlib
+seaborn
+
+# ==============================================================================
+# WINDOWS INSTALLATION NOTE:
+# 'twofish' (a sub-dependency of hopsworks via pyjks) requires C++ Build Tools on Windows.
+# 
+# Recommended Setup: Use WSL2 (Linux on Windows).
+#
+# Alternative Windows Workaround (without Visual C++ Build Tools):
+#   1. pip install all listed above except hopsworks
+#   2. pip install hopsworks --no-deps
+#   3. pip install hsfs hsml pyhumps furl pyarrow
+# ==============================================================================
