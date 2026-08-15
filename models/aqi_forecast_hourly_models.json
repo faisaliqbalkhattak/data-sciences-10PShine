@@ -1,0 +1,259 @@
+{
+  "persistence": {
+    "metrics_by_group": {
+      "hourly_points": {
+        "mse": 228.84482078853046,
+        "rmse": 15.127617816051886,
+        "mae": 9.632729988052569,
+        "r2": 0.5805836252956766,
+        "category_accuracy": 0.8488231780167264,
+        "category_macro_f1": 0.3579467857053244,
+        "high_aqi_recall": 0.7748578942903198
+      },
+      "six_hour_means": {
+        "mse": 469.7876164874551,
+        "rmse": 21.674584574737647,
+        "mae": 15.934014336917565,
+        "r2": 0.10471447347629814,
+        "category_accuracy": 0.7455913978494624,
+        "category_macro_f1": 0.24522912707017622,
+        "high_aqi_recall": 0.6095564941921858
+      },
+      "twelve_hour_means": {
+        "mse": 590.638094882517,
+        "rmse": 24.303047028768162,
+        "mae": 18.28578853046595,
+        "r2": -0.18691847224015712,
+        "category_accuracy": 0.6867383512544802,
+        "category_macro_f1": 0.2041482586885214,
+        "high_aqi_recall": 0.4928436402916554
+      }
+    }
+  },
+  "seasonal_persistence": {
+    "metrics_by_group": {
+      "hourly_points": {
+        "mse": 303.58360812425326,
+        "rmse": 17.423650826513175,
+        "mae": 12.247407407407408,
+        "r2": 0.443605776611424,
+        "category_accuracy": 0.8019354838709677,
+        "category_macro_f1": 0.28953438501212486,
+        "high_aqi_recall": 0.7095953168745228
+      },
+      "six_hour_means": {
+        "mse": 479.9678683791318,
+        "rmse": 21.90816898736934,
+        "mae": 15.964235364396654,
+        "r2": 0.08531372331789744,
+        "category_accuracy": 0.7346236559139785,
+        "category_macro_f1": 0.22706900525880613,
+        "high_aqi_recall": 0.558078141499472
+      },
+      "twelve_hour_means": {
+        "mse": 574.5276174830744,
+        "rmse": 23.96930573635946,
+        "mae": 17.609354838709677,
+        "r2": -0.15454361632130653,
+        "category_accuracy": 0.6870250896057347,
+        "category_macro_f1": 0.2019288983356311,
+        "high_aqi_recall": 0.4401836348906292
+      }
+    }
+  },
+  "ridge": {
+    "path": "models/aqi_forecast_hourly_ridge.joblib",
+    "params": {
+      "alpha": 10.0,
+      "candidate_alphas": [
+        0.1,
+        1.0,
+        10.0,
+        100.0,
+        300.0,
+        1000.0
+      ]
+    },
+    "metrics_by_group": {
+      "hourly_points": {
+        "mse": 125.10104895153565,
+        "rmse": 11.184858021071866,
+        "mae": 8.009525677672121,
+        "r2": 0.7707204897966784,
+        "category_accuracy": 0.87110513739546,
+        "category_macro_f1": 0.353575644256429,
+        "high_aqi_recall": 0.772736913548825
+      },
+      "six_hour_means": {
+        "mse": 296.913232792207,
+        "rmse": 17.231170383703105,
+        "mae": 12.633855281403129,
+        "r2": 0.4341653321138067,
+        "category_accuracy": 0.806057347670251,
+        "category_macro_f1": 0.25586579187244946,
+        "high_aqi_recall": 0.5617740232312566
+      },
+      "twelve_hour_means": {
+        "mse": 358.20240646213074,
+        "rmse": 18.926235929580155,
+        "mae": 13.939341307444701,
+        "r2": 0.2801733299723116,
+        "category_accuracy": 0.7675268817204302,
+        "category_macro_f1": 0.22553376208377,
+        "high_aqi_recall": 0.4102079395085066
+      }
+    }
+  },
+  "lstm": {
+    "path": "models/aqi_forecast_hourly_lstm.keras",
+    "scalers_path": "models/aqi_forecast_hourly_scalers.joblib",
+    "params": {
+      "sequence_length": 72,
+      "epochs": 10,
+      "batch_size": 128,
+      "heads": {
+        "hourly_points": 24,
+        "six_hour_means": 4,
+        "twelve_hour_means": 2
+      }
+    },
+    "metrics_by_group": {
+      "hourly_points": {
+        "mse": 186.8147027833739,
+        "rmse": 13.66801751474492,
+        "mae": 9.990779190724327,
+        "r2": 0.6576145131321436,
+        "category_accuracy": 0.8320549581839904,
+        "category_macro_f1": 0.2924719660495722,
+        "high_aqi_recall": 0.7788029184695003
+      },
+      "six_hour_means": {
+        "mse": 428.5429481804478,
+        "rmse": 20.701278902049694,
+        "mae": 15.692559639077317,
+        "r2": 0.18331542694038439,
+        "category_accuracy": 0.7198207885304659,
+        "category_macro_f1": 0.22813681251114237,
+        "high_aqi_recall": 0.6304118268215417
+      },
+      "twelve_hour_means": {
+        "mse": 498.43488777166357,
+        "rmse": 22.32565537160474,
+        "mae": 17.058103133261987,
+        "r2": -0.001631253776158692,
+        "category_accuracy": 0.6541935483870968,
+        "category_macro_f1": 0.20027586141378084,
+        "high_aqi_recall": 0.5641371860653525
+      }
+    }
+  },
+  "_meta": {
+    "created": "2026-08-15",
+    "target": "aqi_hourly_rolling",
+    "output_count": 30,
+    "output_columns": [
+      "aqi_plus_01h",
+      "aqi_plus_02h",
+      "aqi_plus_03h",
+      "aqi_plus_04h",
+      "aqi_plus_05h",
+      "aqi_plus_06h",
+      "aqi_plus_07h",
+      "aqi_plus_08h",
+      "aqi_plus_09h",
+      "aqi_plus_10h",
+      "aqi_plus_11h",
+      "aqi_plus_12h",
+      "aqi_plus_13h",
+      "aqi_plus_14h",
+      "aqi_plus_15h",
+      "aqi_plus_16h",
+      "aqi_plus_17h",
+      "aqi_plus_18h",
+      "aqi_plus_19h",
+      "aqi_plus_20h",
+      "aqi_plus_21h",
+      "aqi_plus_22h",
+      "aqi_plus_23h",
+      "aqi_plus_24h",
+      "aqi_mean_25_30h",
+      "aqi_mean_31_36h",
+      "aqi_mean_37_42h",
+      "aqi_mean_43_48h",
+      "aqi_mean_49_60h",
+      "aqi_mean_61_72h"
+    ],
+    "hourly_point_outputs": "t+1h through t+24h",
+    "six_hour_block_outputs": "means of t+25..t+30, t+31..t+36, t+37..t+42, t+43..t+48",
+    "twelve_hour_block_outputs": "means of t+49..t+60 and t+61..t+72",
+    "input_contract": "historical-only hourly features available at the forecast origin",
+    "evaluation_protocol": "chronological holdout with a 72-hour purge gap",
+    "rolling_origin_protocol": "3 expanding folds, 168-hour test windows, 72-hour embargo; Ridge and persistence",
+    "rolling_origin_metrics_path": "data/processed/hourly_rolling_origin_comparison.csv",
+    "selected_model_by_group": {
+      "hourly_points": "ridge",
+      "six_hour_means": "ridge",
+      "twelve_hour_means": "ridge"
+    },
+    "release_gate_results": {
+      "hourly_points": {
+        "rmse_pass": true,
+        "mae_pass": true
+      },
+      "six_hour_means": {
+        "rmse_pass": true,
+        "mae_pass": true
+      },
+      "twelve_hour_means": {
+        "rmse_pass": true,
+        "mae_pass": true
+      }
+    },
+    "feature_columns": [
+      "aqi_hourly_rolling",
+      "pm10",
+      "pm2_5",
+      "carbon_monoxide",
+      "nitrogen_dioxide",
+      "sulphur_dioxide",
+      "ozone",
+      "aerosol_optical_depth",
+      "dust",
+      "uv_index",
+      "temperature_2m",
+      "relative_humidity_2m",
+      "dew_point_2m",
+      "precipitation",
+      "rain",
+      "surface_pressure",
+      "cloud_cover",
+      "wind_speed_10m",
+      "wind_direction_10m",
+      "wind_gusts_10m",
+      "aqi_lag_1h",
+      "aqi_lag_24h",
+      "aqi_rolling_6h_mean",
+      "aqi_rolling_24h_mean",
+      "aqi_rolling_6h_std",
+      "aqi_rolling_24h_std",
+      "hour_sin",
+      "hour_cos",
+      "dow_sin",
+      "dow_cos",
+      "is_weekend",
+      "month_sin",
+      "month_cos"
+    ],
+    "n_train_rows": 27825,
+    "n_test_rows": 6975,
+    "target_semantics": "rolling hourly AQI estimate from pollutant-specific EPA windows; not the official daily AQI report",
+    "source_file": "karak_aqi_open_meteo_hourly_features.csv",
+    "source_sha256": "262c79ec1c05afe1086ae64ec5c1bdedf92d1cde48b602b34c7ea4d30a355540",
+    "python_version": "3.11.9",
+    "numpy_version": "1.26.4",
+    "pandas_version": "2.2.3",
+    "sklearn_version": "1.5.2",
+    "release_gate": "selected model must beat the strongest persistence baseline on RMSE and MAE for every output group in rolling-origin evaluation; absolute MSE threshold is not defined by the assignment",
+    "tuning_protocol": "Ridge alpha selected from purged TimeSeriesSplit(gap=72) using training data only"
+  }
+}

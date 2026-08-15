@@ -15,13 +15,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 DATA_ARCHIVE_DIR = PROJECT_ROOT / "data" / "archive" / "secondary_validation"
-for _directory in (DATA_RAW_DIR, DATA_PROCESSED_DIR, DATA_ARCHIVE_DIR):
-    _directory.mkdir(parents=True, exist_ok=True)
+FEATURE_STORE_DIR = PROJECT_ROOT / "data" / "feature_store"
+FEATURE_STORE_PATH = FEATURE_STORE_DIR / "karak_feature_store.duckdb"
+MLRUNS_DIR = PROJECT_ROOT / "models" / "mlruns"
+
+
+def ensure_data_directories() -> None:
+    """Create runtime output directories without import-time side effects."""
+    for directory in (DATA_RAW_DIR, DATA_PROCESSED_DIR, DATA_ARCHIVE_DIR, FEATURE_STORE_DIR):
+        directory.mkdir(parents=True, exist_ok=True)
+
 
 OPEN_METEO_AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 OPEN_METEO_WEATHER_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_WEATHER_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-AIR_QUALITY_HOURLY_VARSF = [
+AIR_QUALITY_HOURLY_VARS = [
     "pm10",
     "pm2_5",
     "carbon_monoxide",

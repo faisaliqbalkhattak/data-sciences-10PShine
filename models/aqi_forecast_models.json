@@ -1,0 +1,293 @@
+{
+  "ridge_h1": {
+    "path": "models/ridge_h1.joblib",
+    "params": {
+      "model__alpha": 1.0
+    },
+    "metrics": {
+      "rmse": 16.269723890197465,
+      "mae": 12.647449850140369,
+      "r2": 0.4425723839383654
+    }
+  },
+  "random_forest_h1": {
+    "path": "models/random_forest_h1.joblib",
+    "params": {
+      "n_estimators": 400,
+      "min_samples_leaf": 4,
+      "max_depth": null
+    },
+    "metrics": {
+      "rmse": 15.75690509132954,
+      "mae": 11.900030039075201,
+      "r2": 0.47715861838976537
+    }
+  },
+  "xgboost_h1": {
+    "path": "models/xgboost_h1.joblib",
+    "params": {
+      "subsample": 0.7,
+      "n_estimators": 200,
+      "max_depth": 3,
+      "learning_rate": 0.03,
+      "colsample_bytree": 0.7
+    },
+    "metrics": {
+      "rmse": 15.319620381167992,
+      "mae": 11.524935255379512,
+      "r2": 0.5057756685000648
+    }
+  },
+  "sarima_h1": {
+    "path": null,
+    "params": {
+      "order": [
+        0,
+        1,
+        0
+      ],
+      "seasonal_order": [
+        0,
+        0,
+        0,
+        7
+      ]
+    },
+    "metrics": {
+      "rmse": 22.710851120569867,
+      "mae": 17.362068965517242,
+      "r2": -0.08616282853408697
+    }
+  },
+  "lstm_h1": {
+    "path": "models/lstm_h1.keras",
+    "params": {
+      "sequence_length": 14,
+      "epochs": 25,
+      "units": [
+        64,
+        32
+      ],
+      "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
+    },
+    "metrics": {
+      "rmse": 23.397620766642586,
+      "mae": 18.79220971680216,
+      "r2": -0.15284656652843598
+    }
+  },
+  "ridge_h2": {
+    "path": "models/ridge_h2.joblib",
+    "params": {
+      "model__alpha": 100.0
+    },
+    "metrics": {
+      "rmse": 19.32879578637625,
+      "mae": 15.574809615531489,
+      "r2": 0.21395022234266725
+    }
+  },
+  "random_forest_h2": {
+    "path": "models/random_forest_h2.joblib",
+    "params": {
+      "n_estimators": 200,
+      "min_samples_leaf": 1,
+      "max_depth": 8
+    },
+    "metrics": {
+      "rmse": 18.781436403265445,
+      "mae": 14.877430840564548,
+      "r2": 0.257839114245061
+    }
+  },
+  "xgboost_h2": {
+    "path": "models/xgboost_h2.joblib",
+    "params": {
+      "subsample": 0.7,
+      "n_estimators": 200,
+      "max_depth": 3,
+      "learning_rate": 0.03,
+      "colsample_bytree": 0.7
+    },
+    "metrics": {
+      "rmse": 18.45736372926981,
+      "mae": 14.640214722732019,
+      "r2": 0.2832300405895217
+    }
+  },
+  "sarima_h2": {
+    "path": null,
+    "params": {
+      "order": [
+        0,
+        1,
+        0
+      ],
+      "seasonal_order": [
+        0,
+        0,
+        0,
+        7
+      ]
+    },
+    "metrics": {
+      "rmse": 25.12019382749732,
+      "mae": 18.617241379310343,
+      "r2": -0.3276586399834345
+    }
+  },
+  "lstm_h2": {
+    "path": "models/lstm_h2.keras",
+    "params": {
+      "sequence_length": 14,
+      "epochs": 25,
+      "units": [
+        64,
+        32
+      ],
+      "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
+    },
+    "metrics": {
+      "rmse": 25.81638200295766,
+      "mae": 20.407157716618002,
+      "r2": -0.4022686061493168
+    }
+  },
+  "ridge_h3": {
+    "path": "models/ridge_h3.joblib",
+    "params": {
+      "model__alpha": 1000.0
+    },
+    "metrics": {
+      "rmse": 19.99877691756411,
+      "mae": 16.368919143947853,
+      "r2": 0.15902635050990177
+    }
+  },
+  "random_forest_h3": {
+    "path": "models/random_forest_h3.joblib",
+    "params": {
+      "n_estimators": 200,
+      "min_samples_leaf": 1,
+      "max_depth": 8
+    },
+    "metrics": {
+      "rmse": 20.101321785867377,
+      "mae": 16.07624724772178,
+      "r2": 0.15037995914106395
+    }
+  },
+  "xgboost_h3": {
+    "path": "models/xgboost_h3.joblib",
+    "params": {
+      "subsample": 0.7,
+      "n_estimators": 200,
+      "max_depth": 3,
+      "learning_rate": 0.03,
+      "colsample_bytree": 0.7
+    },
+    "metrics": {
+      "rmse": 20.09756694184721,
+      "mae": 16.058710926976698,
+      "r2": 0.15069734053583772
+    }
+  },
+  "sarima_h3": {
+    "path": null,
+    "params": {
+      "order": [
+        0,
+        1,
+        0
+      ],
+      "seasonal_order": [
+        1,
+        0,
+        0,
+        7
+      ]
+    },
+    "metrics": {
+      "rmse": 22.858775919895216,
+      "mae": 17.485567955908433,
+      "r2": -0.09870590062826068
+    }
+  },
+  "lstm_h3": {
+    "path": "models/lstm_h3.keras",
+    "params": {
+      "sequence_length": 14,
+      "epochs": 25,
+      "units": [
+        64,
+        32
+      ],
+      "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
+    },
+    "metrics": {
+      "rmse": 23.856862650010402,
+      "mae": 18.78301160021262,
+      "r2": -0.19674652930732628
+    }
+  },
+  "_meta": {
+    "created": "2026-08-15",
+    "target": "aqi_us_epa",
+    "horizons_days": [
+      1,
+      2,
+      3
+    ],
+    "features": [
+      "pm10",
+      "pm2_5",
+      "carbon_monoxide",
+      "nitrogen_dioxide",
+      "sulphur_dioxide",
+      "ozone",
+      "aerosol_optical_depth",
+      "dust",
+      "uv_index",
+      "temperature_2m",
+      "relative_humidity_2m",
+      "dew_point_2m",
+      "precipitation",
+      "rain",
+      "surface_pressure",
+      "cloud_cover",
+      "wind_speed_10m",
+      "wind_direction_10m",
+      "wind_gusts_10m",
+      "aqi_us_epa_lag1",
+      "aqi_us_epa_lag2",
+      "aqi_us_epa_lag3",
+      "aqi_us_epa_lag7",
+      "pm2_5_lag1",
+      "pm2_5_lag2",
+      "pm2_5_lag3",
+      "pm2_5_lag7",
+      "aqi_us_epa_roll_mean3",
+      "aqi_us_epa_roll_mean7",
+      "aqi_us_epa_roll_std3",
+      "aqi_us_epa_roll_std7",
+      "pm2_5_roll_mean3",
+      "pm2_5_roll_mean7",
+      "month_sin",
+      "month_cos",
+      "dow",
+      "is_weekend",
+      "day_of_year_sin",
+      "day_of_year_cos"
+    ],
+    "n_train_rows": 1154,
+    "n_test_rows": 290,
+    "selection_method": "lowest holdout RMSE among persisted estimators; regenerate after each data refresh",
+    "best_model_by_horizon": {
+      "1": "xgboost",
+      "2": "xgboost",
+      "3": "ridge"
+    },
+    "evaluation_protocol": "chronological holdout with three-day purge gap; TimeSeriesSplit gap=3 for tuning",
+    "forecast_contract": "issue at 00:00 Asia/Karachi after the previous local day is complete"
+  }
+}
