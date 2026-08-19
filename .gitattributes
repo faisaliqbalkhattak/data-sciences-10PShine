@@ -1,0 +1,3 @@
+# Normalize all text files to LF on commit so Linux CI runners and Streamlit
+# Cloud never see CRLF, which breaks pip install and shell scripts.
+* text=auto eol=lf
