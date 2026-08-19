@@ -1,11 +1,11 @@
-# API Documentation — AQI Forecasting Project (Karak, Pakistan)
+# Historical multi-source API specification (superseded)
 
 **Project**: 10Pearls Shine Program — 3-day AQI forecast for Karak, Pakistan  
-**Coordinates**: 33.1189° N, 71.0947° E  
+**Historical coordinates**: 33.1189° N, 71.0947° E
 **Local timezone**: Asia/Karachi (PKT, UTC+5)  
 **Last updated**: 2026-07-29
 
-This file contains the authoritative reference for every external data source used by the pipeline. Process findings and analysis conclusions are documented separately in `Docs/learning.txt`.
+This file preserves the former multi-source design for audit history. It is not authoritative for the active pipeline. The active coordinate and provider contract are in `src/config.py` and `data_sources_and_file_naming.md`; process findings are in `learning.txt`.
 
 ---
 

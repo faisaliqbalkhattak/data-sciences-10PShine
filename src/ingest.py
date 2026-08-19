@@ -121,6 +121,7 @@ def save_raw(
 ) -> Path:
     if provider != "open_meteo":
         raise ValueError("The active pipeline accepts only provider='open_meteo'.")
+    config.ensure_data_directories()
     output = config.DATA_RAW_DIR / (
         f"karak_{purpose}_{provider}_{frequency}_{start_date}_to_{end_date}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     )
