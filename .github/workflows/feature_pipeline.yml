@@ -1,0 +1,56 @@
+name: Feature pipeline (hourly)
+
+# Runs the feature pipeline every hour per the assignment ("feature pipeline
+# runs every hour automatically"), plus on every push/PR as the project CI.
+# No secrets are required: Open-Meteo is a keyless public API and the feature
+# store is a local DuckDB file uploaded as a workflow artifact.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  feature-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run the test suite (CI check)
+        run: python -m pytest -q
+
+      - name: Fetch raw Open-Meteo data (keyless)
+        run: python -m src.build_features --fetch
+
+      - name: Backfill hourly feature store
+        run: python -m src.feature_store backfill-hourly --replace
+
+      - name: Backfill daily feature store
+        run: python -m src.feature_store backfill-daily --replace
+
+      - name: Inspect stored feature schema
+        run: python -m src.feature_store stats
+
+      - name: Upload feature store artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-store
+          path: |
+            data/feature_store/
+            data/processed/karak_aqi_open_meteo_hourly_features.csv
+            data/processed/karak_aqi_open_meteo_daily_features.csv
+            data/processed/qc_raw_open_meteo_summary.csv
+          if-no-files-found: error

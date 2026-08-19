@@ -5,22 +5,22 @@
       "model__alpha": 1.0
     },
     "metrics": {
-      "rmse": 16.269723890197465,
-      "mae": 12.647449850140369,
-      "r2": 0.4425723839383654
+      "rmse": 16.664815605600214,
+      "mae": 13.006585900320532,
+      "r2": 0.4570050494136336
     }
   },
   "random_forest_h1": {
     "path": "models/random_forest_h1.joblib",
     "params": {
-      "n_estimators": 400,
+      "n_estimators": 200,
       "min_samples_leaf": 4,
       "max_depth": null
     },
     "metrics": {
-      "rmse": 15.75690509132954,
-      "mae": 11.900030039075201,
-      "r2": 0.47715861838976537
+      "rmse": 16.281727483325714,
+      "mae": 12.352271105234703,
+      "r2": 0.4816826713016479
     }
   },
   "xgboost_h1": {
@@ -33,16 +33,16 @@
       "colsample_bytree": 0.7
     },
     "metrics": {
-      "rmse": 15.319620381167992,
-      "mae": 11.524935255379512,
-      "r2": 0.5057756685000648
+      "rmse": 15.784699739850533,
+      "mae": 11.956331395778527,
+      "r2": 0.5128447178108525
     }
   },
   "sarima_h1": {
     "path": null,
     "params": {
       "order": [
-        0,
+        1,
         1,
         0
       ],
@@ -54,9 +54,9 @@
       ]
     },
     "metrics": {
-      "rmse": 22.710851120569867,
-      "mae": 17.362068965517242,
-      "r2": -0.08616282853408697
+      "rmse": 26.400112473638163,
+      "mae": 19.555691066335577,
+      "r2": -0.36271902777340026
     }
   },
   "lstm_h1": {
@@ -71,9 +71,9 @@
       "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
     },
     "metrics": {
-      "rmse": 23.397620766642586,
-      "mae": 18.79220971680216,
-      "r2": -0.15284656652843598
+      "rmse": 24.857171469069957,
+      "mae": 19.77287993129111,
+      "r2": -0.20808691976796512
     }
   },
   "ridge_h2": {
@@ -82,22 +82,22 @@
       "model__alpha": 100.0
     },
     "metrics": {
-      "rmse": 19.32879578637625,
-      "mae": 15.574809615531489,
-      "r2": 0.21395022234266725
+      "rmse": 19.975276110637054,
+      "mae": 16.0303239372286,
+      "r2": 0.2189057117528993
     }
   },
   "random_forest_h2": {
     "path": "models/random_forest_h2.joblib",
     "params": {
-      "n_estimators": 200,
-      "min_samples_leaf": 1,
-      "max_depth": 8
+      "n_estimators": 400,
+      "min_samples_leaf": 2,
+      "max_depth": null
     },
     "metrics": {
-      "rmse": 18.781436403265445,
-      "mae": 14.877430840564548,
-      "r2": 0.257839114245061
+      "rmse": 19.481705883827562,
+      "mae": 15.388621643037142,
+      "r2": 0.2570290302802881
     }
   },
   "xgboost_h2": {
@@ -110,9 +110,9 @@
       "colsample_bytree": 0.7
     },
     "metrics": {
-      "rmse": 18.45736372926981,
-      "mae": 14.640214722732019,
-      "r2": 0.2832300405895217
+      "rmse": 19.401898721366027,
+      "mae": 15.377084719080504,
+      "r2": 0.26310375032107836
     }
   },
   "sarima_h2": {
@@ -131,9 +131,9 @@
       ]
     },
     "metrics": {
-      "rmse": 25.12019382749732,
-      "mae": 18.617241379310343,
-      "r2": -0.3276586399834345
+      "rmse": 23.791183412416988,
+      "mae": 18.122448979591837,
+      "r2": -0.108026047700851
     }
   },
   "lstm_h2": {
@@ -148,9 +148,9 @@
       "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
     },
     "metrics": {
-      "rmse": 25.81638200295766,
-      "mae": 20.407157716618002,
-      "r2": -0.4022686061493168
+      "rmse": 26.98736518199194,
+      "mae": 21.09970040941393,
+      "r2": -0.4257351321898186
     }
   },
   "ridge_h3": {
@@ -159,22 +159,22 @@
       "model__alpha": 1000.0
     },
     "metrics": {
-      "rmse": 19.99877691756411,
-      "mae": 16.368919143947853,
-      "r2": 0.15902635050990177
+      "rmse": 20.662954268660037,
+      "mae": 16.80988802073047,
+      "r2": 0.17278885428205892
     }
   },
   "random_forest_h3": {
     "path": "models/random_forest_h3.joblib",
     "params": {
-      "n_estimators": 200,
+      "n_estimators": 400,
       "min_samples_leaf": 1,
       "max_depth": 8
     },
     "metrics": {
-      "rmse": 20.101321785867377,
-      "mae": 16.07624724772178,
-      "r2": 0.15037995914106395
+      "rmse": 20.712975409971794,
+      "mae": 16.37574690146437,
+      "r2": 0.16877896011839522
     }
   },
   "xgboost_h3": {
@@ -187,9 +187,9 @@
       "colsample_bytree": 0.7
     },
     "metrics": {
-      "rmse": 20.09756694184721,
-      "mae": 16.058710926976698,
-      "r2": 0.15069734053583772
+      "rmse": 20.717252305918933,
+      "mae": 16.329526680667385,
+      "r2": 0.16843565715432107
     }
   },
   "sarima_h3": {
@@ -208,9 +208,9 @@
       ]
     },
     "metrics": {
-      "rmse": 22.858775919895216,
-      "mae": 17.485567955908433,
-      "r2": -0.09870590062826068
+      "rmse": 22.743560635112477,
+      "mae": 18.255311244465666,
+      "r2": -0.0021863016822305514
     }
   },
   "lstm_h3": {
@@ -225,13 +225,13 @@
       "target_scaling": "StandardScaler fit on the training target, inverse-transformed for metrics"
     },
     "metrics": {
-      "rmse": 23.856862650010402,
-      "mae": 18.78301160021262,
-      "r2": -0.19674652930732628
+      "rmse": 25.080983688612495,
+      "mae": 19.356386772110994,
+      "r2": -0.2187669813053228
     }
   },
   "_meta": {
-    "created": "2026-08-15",
+    "created": "2026-08-19",
     "target": "aqi_us_epa",
     "horizons_days": [
       1,
@@ -279,8 +279,8 @@
       "day_of_year_sin",
       "day_of_year_cos"
     ],
-    "n_train_rows": 1154,
-    "n_test_rows": 290,
+    "n_train_rows": 1169,
+    "n_test_rows": 294,
     "selection_method": "lowest holdout RMSE among persisted estimators; regenerate after each data refresh",
     "best_model_by_horizon": {
       "1": "xgboost",
