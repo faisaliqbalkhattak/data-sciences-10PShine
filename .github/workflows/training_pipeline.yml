@@ -4,7 +4,8 @@ name: Training pipeline (daily)
 # runs daily for model updates"). It rebuilds the feature store from the latest
 # keyless Open-Meteo data, trains both the daily and hourly models **from the
 # feature store**, registers the accepted models in the MLflow registry
-# (file-backed, no server), and uploads the registry as a workflow artifact.
+# (file-backed, no server), uploads the registry as a workflow artifact, and
+# exports a fresh pre-computed forecast JSON for the dashboard.
 on:
   schedule:
     - cron: "15 1 * * *"
@@ -49,6 +50,16 @@ jobs:
 
       - name: Inspect registered models
         run: python -m src.model_registry list
+
+      - name: Export pre-computed forecast (static JSON)
+        run: python -m src.export_forecast --source store
+
+      - name: Commit forecast JSON (skip CI to avoid loops)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/static_forecast.json
+          git diff --cached --quiet || git commit -m "ci: refresh forecast JSON after training [skip ci]" && git push
 
       - name: Upload model registry and manifests
         uses: actions/upload-artifact@v4

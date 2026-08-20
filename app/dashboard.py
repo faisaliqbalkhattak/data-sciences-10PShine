@@ -1,17 +1,12 @@
 """Streamlit dashboard for the Karak AQI Predictor -- Google Material / IQAir style.
 
-A single scrolling page built like a Google Weather / Google Fit screen with an
-IQAir-style hero widget: a category-colored panel with an AQI badge, status,
-dominant pollutant and a white weather strip. Below it: an hourly forecast
-strip, an Altair chart of the 72-hour window comparing our model with IQAir's
-own hourly forecast for Karak, a comparison table, and expandable sections for
-SHAP, model history and EDA.
+Architecture: predictions are pre-computed by the CI pipelines (feature pipeline
+hourly, training pipeline daily) and stored as ``data/static_forecast.json``.
+The dashboard reads this JSON file and renders a static page for every visitor,
+giving near-instant response times without runtime inference.
 
-The forecast window is anchored to the current hour: the origin is the most
-recent completed hour, predictions run from the next hour (the current hour in
-Google-Weather terms) out to +72h, and refreshing after the hour passes moves
-the whole window forward by one hour. No model or prediction logic changes --
-only the input data is kept current and the rendering is new.
+The only real-time fetch is IQAir's live AQI reading for the hero widget,
+which is cached for 5 minutes.
 
 Run from ``development``::
 
@@ -20,6 +15,7 @@ Run from ``development``::
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import datetime
@@ -48,12 +44,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-PROCESSED = config.DATA_PROCESSED_DIR
+FORECAST_PATH = PROJECT_ROOT / "data" / "static_forecast.json"
 API_URL = os.environ.get("AQI_API_URL", "http://127.0.0.1:8000")
 
 # Semantic palette tailored from the portfolio design: green for environment,
-# orange for warning, red for hazards, blue for information. The orange ramp
-# is the portfolio's own terracotta scale.
+# orange for warning, red for hazards, blue for information.
 CATEGORY_COLORS = {
     "Good": "#2e7d32",
     "Moderate": "#9ccc65",
@@ -63,20 +58,15 @@ CATEGORY_COLORS = {
     "Hazardous": "#8f2f12",
 }
 INK = "#241812"
-MUTED = "#5c4a3f"  # darker warm brown: AA contrast for small text on cream
+MUTED = "#5c4a3f"
 SURFACE = "#fffaf5"
 CANVAS = "#f6eee7"
 LINE = "#eadbd0"
 ORANGE_700 = "#c84f1b"
-KICKER = "#a83c10"  # brand terracotta darkened for AA contrast on cream
-INFO_BLUE = "#4a7dd6"  # chart reference line
-INFO_BLUE_TEXT = "#1a56c9"  # info text: AA contrast on cream
+KICKER = "#a83c10"
+INFO_BLUE = "#4a7dd6"
+INFO_BLUE_TEXT = "#1a56c9"
 DISPLAY_FONT = "'Space Grotesk',sans-serif"
-# Lucide-style inline SVG icons (stroke-based, 24x24 viewBox)
-_LU = ("'none'" , "'currentColor'")  # not used as constants, just reference
-
-# No emojis or SVGs -- Streamlit's markdown renderer strips <svg>/<span> tags
-# so inline icons don't render.  Clean text labels only.
 
 BAND_BOUNDS = [
     (0, 50, "Good"),
@@ -98,30 +88,25 @@ html, body, [class*="css"] {
     background-image: radial-gradient(circle at 12% 4%, rgba(244, 122, 50, 0.14), transparent 26rem);
 }
 .block-container { max-width: 1560px; padding-top: 4.2rem; padding-bottom: 4rem; }
-/* Let the main grid use the full viewport width, not a centered WordPress column */
 .main .block-container { padding-left: 2.5rem; padding-right: 2.5rem; }
 h1, h2, h3 {
     color: #241812; font-weight: 700; letter-spacing: -0.02em;
     font-family: 'Space Grotesk', 'DM Sans', sans-serif;
 }
 section[data-testid="stSidebar"] { display: none; }
-
-/* Streamlit's own chrome header stays full-size (dark ink bar with Deploy/menu)
-   so no info is cropped; the app content clears it via block-container padding. */
 header[data-testid="stHeader"] {
     background: #241812 !important;
     border-bottom: 1px solid #eadbd0;
 }
 [data-testid="stDecoration"] { display: none !important; }
 
-/* Top bar: brand, source pills, refresh, model chip in one row */
+/* Top bar */
 .topbar {
     display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
     background: #fffaf5; border: 1px solid #eadbd0; border-radius: 16px;
     padding: 12px 18px; margin-bottom: 16px;
     box-shadow: 0 8px 24px rgba(91, 44, 18, 0.08);
 }
-/* Top bar: one slim toolbar row, like the black chrome bar above it */
 [data-testid="stVerticalBlockBorderWrapper"] {
     background: #fffaf5;
     border: 1px solid #eadbd0 !important;
@@ -130,17 +115,12 @@ header[data-testid="stHeader"] {
     padding: 6px 18px;
     margin-bottom: 14px;
 }
-/* Inside the top bar: no extra borders/shadows on children */
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stRadio"] > div[role="radiogroup"] {
-    background: #eadbd0;
-}
-/* Inside metric card row: remove duplicate card borders */
 [data-testid="stVerticalBlockBorderWrapper"] > div > div > div > div > div {
     box-shadow: none !important;
     border: none !important;
 }
 
-/* Cards: Material-style 16px radius + soft elevation (Google L2) */
+/* Cards */
 div[data-testid="stMetric"], div[data-testid="stExpander"] {
     background: #fffaf5; border-radius: 16px; border: 1px solid #eadbd0;
     box-shadow: 0 8px 24px rgba(91, 44, 18, 0.08);
@@ -159,11 +139,9 @@ div[data-testid="stExpander"] summary {
     font-weight: 700; color: #241812; font-family: 'Space Grotesk', 'DM Sans', sans-serif;
 }
 div[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
-
-/* Captions keep AA contrast on the cream canvas */
 div[data-testid="stCaptionContainer"] p { color: #5c4a3f !important; }
 
-/* Segmented control: Google-style pills, equal-width, clearly distinct active state */
+/* Segmented control */
 div[data-testid="stRadio"] > div[role="radiogroup"] {
     display: flex !important; flex-direction: row !important; align-items: center; gap: 4px;
     background: #eadbd0; border-radius: 999px; padding: 4px; width: 100%;
@@ -177,7 +155,6 @@ div[data-testid="stRadio"] label:has(input:checked) {
     background: #ffffff !important;
     box-shadow: 0 1px 3px rgba(91, 44, 18, 0.25), 0 0 0 1px #eadbd0;
 }
-/* Streamlit renders the label text as nested Markdown and re-colors it -- force contrast */
 div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"],
 div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {
     color: #5c4a3f !important;
@@ -188,7 +165,7 @@ div[data-testid="stRadio"] label:has(input:checked) div[data-testid="stMarkdownC
 }
 div[data-testid="stRadio"] label > div:first-child { display: none; }
 
-/* Buttons: wide, short brand-ink pill (refresh stays on one line) */
+/* Buttons */
 div.stButton > button {
     background: #241812; color: #fffaf5 !important; border: none; border-radius: 999px;
     padding: 7px 24px; font-weight: 600; white-space: nowrap; height: 38px;
@@ -198,7 +175,7 @@ div.stButton > button div[data-testid="stMarkdownContainer"] p { color: #fffaf5 
 div.stButton > button:hover { background: #3a2a1e; color: #ffffff !important; border: none; }
 div.stButton > button:active, div.stButton > button:focus { border: none; outline: none; }
 
-/* Toggle / checkbox: visible box even when off (BaseWeb renders st.toggle as a checkbox) */
+/* Toggle */
 div[data-testid="stToggle"] label[data-baseweb="checkbox"] > div:first-child,
 div[data-testid="stCheckbox"] label[data-baseweb="checkbox"] > div:first-child {
     border: 2px solid #a83c10 !important;
@@ -211,13 +188,21 @@ div[data-testid="stCheckbox"] label div[data-testid="stMarkdownContainer"] p {
     color: #241812 !important; font-weight: 500;
 }
 
-/* Accessibility: visible focus ring */
 :focus-visible { outline: 2px solid #c84f1b; outline-offset: 2px; }
-
 hr { border-color: #eadbd0; }
-
-/* Readable, on-brand text selection */
 ::selection { background: #f6ae76; color: #241812; }
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .block-container { padding-top: 2.8rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
+    [data-testid="stVerticalBlockBorderWrapper"] { padding: 4px 10px !important; }
+    div[data-testid="stRadio"] label { font-size: 11px !important; padding: 5px 4px !important; }
+    div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 12px !important; }
+    div[data-testid="stMetric"] { padding: 10px 12px !important; }
+    div[data-testid="stMetricValue"] { font-size: 20px !important; }
+    /* Compact header on mobile */
+    .main .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
+}
 </style>
 """
 
@@ -233,20 +218,7 @@ HERO_SKELETON = """
 
 
 def inject_css() -> None:
-    # Inject mobile-responsive CSS on top of the base styles
-    mobile_css = """
-    <style>
-    @media (max-width: 768px) {
-        .block-container { padding-top: 3.2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
-        [data-testid="stVerticalBlockBorderWrapper"] { padding: 4px 10px !important; }
-        div[data-testid="stRadio"] label { font-size: 11px !important; padding: 5px 4px !important; }
-        div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 12px !important; }
-        div[data-testid="stMetric"] { padding: 10px 12px !important; }
-        div[data-testid="stMetricValue"] { font-size: 20px !important; }
-    }
-    </style>
-    """
-    st.markdown(APP_CSS + mobile_css, unsafe_allow_html=True)
+    st.markdown(APP_CSS, unsafe_allow_html=True)
 
 
 def category_color(category: str | None) -> str:
@@ -268,131 +240,84 @@ def shade(hex_color: str, factor: float = 0.72) -> str:
 
 
 def is_light(hex_color: str) -> bool:
-    """Perceptual luminance > 140/255: use dark text, else white text."""
     r, g, b = _rgb(hex_color)
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > 140
 
 
 # --------------------------------------------------------------------------
-# Pipeline metadata: last data fetch, last model training
-# --------------------------------------------------------------------------
-def _pipeline_metadata() -> dict:
-    """Read timestamps from the feature store and model artifacts."""
-    import os
-    from datetime import datetime
-
-    result = {"data_fetched": None, "model_trained": None}
-    # Feature store mtime = last time data was ingested
-    fs = config.FEATURE_STORE_DIR / "karak_feature_store.duckdb"
-    if fs.exists():
-        result["data_fetched"] = datetime.fromtimestamp(os.path.getmtime(fs))
-    # Model manifest mtime = last time models were trained
-    for name in ("aqi_forecast_hourly_models.json", "aqi_forecast_models.json"):
-        p = config.PROJECT_ROOT / "models" / name
-        if p.exists():
-            mt = datetime.fromtimestamp(os.path.getmtime(p))
-            if result["model_trained"] is None or mt > result["model_trained"]:
-                result["model_trained"] = mt
-    return result
-
-
-# --------------------------------------------------------------------------
-# Data fetching (same contract as before, plus current-hour anchoring)
+# Load pre-computed forecast
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=300, show_spinner=False)
-def _cached_load(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
-    """Cached forecast via direct function calls (no API server needed).
+def _load_forecast() -> dict:
+    """Read the pre-computed forecast JSON generated by the CI pipeline."""
+    if not FORECAST_PATH.exists():
+        return {}
+    return json.loads(FORECAST_PATH.read_text(encoding="utf-8"))
 
-    TTL of 300 seconds (5 minutes) so repeated page loads and user refreshes
-    do not hammer Open-Meteo.  The ``source`` argument is the cache key;
-    switching Store/Live invalidates automatically.
+
+def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame, pd.Series, dict]:
+    """Convert the raw forecast dict into the frames the dashboard needs.
+
+    Returns (origin, rows, iqair_series, current_aqi_dict).
     """
-    from app.live_data import current_conditions, load_latest_hourly
-    from src.inference_hourly import predict_latest
-    from src.train_hourly import build_hourly_training_frame
-
-    hourly = load_latest_hourly(source)
-    forecast = predict_latest(hourly)
-    origin = pd.Timestamp(forecast["forecast_origin"].iloc[0])
-    rows = forecast[["kind", "start_time", "end_time", "value"]].copy()
-    rows["category"] = rows["value"].map(aqi_category)
-    features = build_hourly_training_frame(hourly, include_targets=False)
-    refs = {"iqair": _iqair_reference(), "current": current_conditions(hourly)}
-    return origin, rows, features, refs
-
-
-def _load_direct(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
-    """Forecast via direct function calls (no API server needed)."""
-    return _cached_load(source)
-
-
-def _load_via_api(source: str) -> tuple[pd.Timestamp, pd.DataFrame, dict, dict]:
-    """Forecast through the FastAPI backend."""
-    import requests
-
-    response = requests.get(f"{API_URL}/forecast", params={"source": source}, timeout=90)
-    response.raise_for_status()
-    payload = response.json()
-    origin = pd.Timestamp(payload["origin"])
-    rows = pd.DataFrame(payload["outputs"])
+    origin = pd.Timestamp(forecast["origin"])
+    outputs = forecast["outputs"]
+    rows = pd.DataFrame(outputs)
     rows["start_time"] = pd.to_datetime(rows["start_time"])
     rows["end_time"] = pd.to_datetime(rows["end_time"])
-    refs = {
-        "iqair": _series_from_payload(payload.get("iqair_forecast") or []),
-        "current": payload.get("current_conditions") or {},
-    }
-    return origin, rows, payload, refs
+    rows["category"] = rows["value"].map(aqi_category)
+
+    # IQAir reference series
+    iqair_data = forecast.get("iqair_forecast", [])
+    if iqair_data:
+        iqair_series = pd.Series(
+            [item["aqi"] for item in iqair_data],
+            index=pd.to_datetime([item["time"] for item in iqair_data]),
+            name="aqi",
+        )
+    else:
+        iqair_series = pd.Series(dtype=float, name="aqi")
+
+    current_aqi = forecast.get("current_aqi", {})
+    return origin, rows, iqair_series, current_aqi
 
 
-def _series_from_payload(items: list) -> pd.Series:
-    if not items:
-        return pd.Series(dtype=float, name="aqi")
-    return pd.Series(
-        [float(item["aqi"]) for item in items],
-        index=pd.to_datetime([item["time"] for item in items]),
-        name="aqi",
-    )
-
-
-def _iqair_reference() -> pd.Series:
-    """Best-effort IQAir hourly forecast AQI (empty on failure)."""
+def _iqair_now_live() -> float | None:
+    """Fetch IQAir's live current AQI (cached 5 min). Real-time reference."""
     from app.live_data import iqair_forecast_aqi
 
     try:
-        return iqair_forecast_aqi()
-    except Exception:  # noqa: BLE001 - reference line is optional
-        return pd.Series(dtype=float)
+        series = iqair_forecast_aqi()
+        if len(series):
+            return round(float(series.iloc[0]), 1)
+    except Exception:
+        pass
+    return None
 
 
 def _model_label() -> str:
-    """Best-effort label of the registered champion (the live model)."""
-    try:
-        from src.model_registry import list_registered
-
-        for model in list_registered():
-            if model["name"] == "aqi-hourly-ridge":
-                versions = model.get("latest_versions") or []
-                if versions:
-                    return f"aqi-hourly-ridge · v{versions[-1].get('version')} champion"
-    except Exception:  # noqa: BLE001 - label is cosmetic
-        pass
-    return "aqi-hourly-ridge"
+    forecast = _load_forecast()
+    model = forecast.get("model", "aqi-hourly-ridge")
+    generated = forecast.get("generated_at", "")
+    if generated:
+        try:
+            dt = pd.Timestamp(generated)
+            return f"{model} (updated {dt:%d %b %H:%M})"
+        except Exception:
+            pass
+    return model
 
 
 # --------------------------------------------------------------------------
 # Rendering: Google Material components
 # --------------------------------------------------------------------------
-def _source_label(source: str) -> str:
-    return "Feature store (scheduled)" if source == "store" else "Live (Open-Meteo pull)"
-
-
 POLLUTANT_LABELS = {
     "pm2_5": "PM2.5",
     "pm10": "PM10",
-    "ozone": "O₃",
+    "ozone": "O\u2083",
     "carbon_monoxide": "CO",
-    "nitrogen_dioxide": "NO₂",
-    "sulphur_dioxide": "SO₂",
+    "nitrogen_dioxide": "NO\u2082",
+    "sulphur_dioxide": "SO\u2082",
 }
 
 
@@ -412,58 +337,64 @@ WORRIED_FACE_SVG = (
 
 
 def render_hero(
-    origin: pd.Timestamp,
-    rows: pd.DataFrame,
     source: str,
+    rows: pd.DataFrame,
+    current_aqi: dict,
+    iqair_now: float | None,
     model_label: str,
-    current: dict,
-    iqair_now: float | None = None,
 ) -> None:
-    """Hero AQI panel: the highlighted badge is the number that matters for
-    the chosen mode.
+    """Hero AQI panel per user spec:
 
-    * ``store`` -- the big badge is our model's next-hour forecast (the
-      dashboard's headline), with IQAir's current reading as the secondary
-      line.
-    * ``live``  -- the big badge is IQAir's live current-hour AQI (the live
-      reference), with our model's next-hour forecast as the secondary line.
-
-    ``current`` carries the dominant pollutant + concentration, and ``rows``
-    the model outputs, so the two numbers are never confused.
+    * ``live`` -- primary = IQAir live AQI, secondary = our current-hour AQI
+      (calculated from observed data using US EPA formula).
+    * ``store`` -- primary = our current-hour AQI, secondary = IQAir current
+      value, tertiary = our model's next-hour prediction.
     """
-    first = rows.iloc[0]
-    model_aqi = float(first["value"])
-    model_category = first["category"] or "Good"
+    # Our current-hour AQI from observed data
+    our_current = current_aqi.get("aqi")
+    our_category = current_aqi.get("category") or "Good"
 
-    live = source == "live" and iqair_now is not None
-    if live:
+    # Model's next-hour prediction
+    first = rows.iloc[0]
+    model_next = float(first["value"])
+    model_next_category = first["category"] or "Good"
+
+    if source == "live" and iqair_now is not None:
+        # Live tab: IQAir is primary
         badge_aqi = iqair_now
-        badge_category = aqi_category(iqair_now) or model_category
-        badge_label = "US AQI⁺ · IQAir live"
-        secondary_line = f"Ours (next hour): {model_aqi:.0f}"
+        badge_category = aqi_category(iqair_now) or our_category
+        badge_label = "US AQI\u202f\u00b7\u202fIQAir live"
+        secondary_line = f"Ours (this hour): {our_current:.0f}" if our_current is not None else ""
+        tertiary_line = f"Ours (next hour): {model_next:.0f}"
     else:
-        badge_aqi = model_aqi
-        badge_category = model_category
-        badge_label = "US AQI⁺ · next hour"
-        secondary_line = (
-            f"IQAir now: {iqair_now:.0f}" if iqair_now is not None else ""
-        )
+        # Store tab: our current-hour is primary
+        badge_aqi = our_current if our_current is not None else model_next
+        badge_category = our_category if our_current is not None else model_next_category
+        badge_label = "US AQI\u202f\u00b7\u202fthis hour"
+        secondary_line = f"IQAir: {iqair_now:.0f}" if iqair_now is not None else ""
+        tertiary_line = f"Ours (next hour): {model_next:.0f}"
 
     color = category_color(badge_category)
     text_color = INK if is_light(color) else "#ffffff"
     panel = shade(color, 0.86)
 
-    pollutant = _pollutant_label(current.get("main_pollutant"))
-    concentration = current.get("concentration")
+    pollutant = _pollutant_label(current_aqi.get("main_pollutant"))
+    concentration = current_aqi.get("concentration")
     concentration_html = (
-        f"{concentration:.1f} µg/m³" if concentration is not None else "—"
+        f"{concentration:.1f} \u00b5g/m\u00b3" if concentration is not None else "\u2014"
     )
-    secondary_html = (
-        f'<div style="font-size:12px; margin-top:10px; opacity:.92; font-weight:600;">'
-        f'{secondary_line}</div>'
-        if secondary_line
-        else ""
-    )
+
+    lines_html = ""
+    if secondary_line:
+        lines_html += (
+            f'<div style="font-size:12px; margin-top:8px; opacity:.92; font-weight:600;">'
+            f"{secondary_line}</div>"
+        )
+    if tertiary_line:
+        lines_html += (
+            f'<div style="font-size:11px; margin-top:4px; opacity:.80; font-weight:500;">'
+            f"{tertiary_line}</div>"
+        )
 
     html = dedent(f"""
     <div style="border-radius:20px; overflow:hidden; margin-bottom:14px;
@@ -488,7 +419,7 @@ def render_hero(
               <span>Main pollutant: {pollutant}</span>
               <span>{concentration_html}</span>
             </div>
-            {secondary_html}
+            {lines_html}
           </div>
         </div>
       </div>
@@ -497,18 +428,14 @@ def render_hero(
     st.markdown(html, unsafe_allow_html=True)
 
 
-def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, refs: dict) -> None:
-    """Small stat tiles -- the AQI number itself lives in the hero, so these
-    only carry the non-redundant forecast facts."""
+def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, iqair_now: float | None) -> None:
     peak24 = float(rows[rows["kind"] == "point"]["value"].max())
     max72 = float(rows["value"].max())
-    iqair = _ref_or_empty(refs, "iqair")
-    iqair_now = float(iqair.iloc[0]) if len(iqair) else None
     tiles = [
         ("Forecast origin", origin.strftime("%m-%d %H:%M"), MUTED, ""),
-        ("Peak hourly · next 24h", f"{peak24:.0f}", MUTED, ""),
-        ("Max · full 72h", f"{max72:.0f}", MUTED, ""),
-        ("IQAir now", f"{iqair_now:.0f}" if iqair_now is not None else "—", INFO_BLUE_TEXT, "US AQI⁺"),
+        ("Peak hourly \u00b7 next 24h", f"{peak24:.0f}", MUTED, ""),
+        ("Max \u00b7 full 72h", f"{max72:.0f}", MUTED, ""),
+        ("IQAir now", f"{iqair_now:.0f}" if iqair_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
     ]
     cards = []
     for label, value, accent, note in tiles:
@@ -526,7 +453,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, refs: dict) ->
             f'color:{MUTED}; font-weight:600;">{label}</div>'
             f'<div style="font-size:26px; font-weight:700; color:{INK}; '
             f'font-family:{DISPLAY_FONT}; margin-top:6px;">{value}</div>'
-            f'{note_html}</div>'
+            f"{note_html}</div>"
         )
     st.markdown(
         '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">'
@@ -545,7 +472,7 @@ def render_alerts(rows: pd.DataFrame) -> None:
             dedent(f"""
             <div style="border-radius:16px; padding:14px 18px; margin-bottom:12px;
                  background:#fdecea; border:1px solid #f5b5b1; color:#8f2f12;">
-              <b>HAZARDOUS AQI (≥ 301) predicted</b> in the next 72 hours at: {windows}.
+              <b>HAZARDOUS AQI (\u2265 301) predicted</b> in the next 72 hours at: {windows}.
               Limit outdoor exposure and follow local health advisories.
             </div>
             """),
@@ -557,7 +484,7 @@ def render_alerts(rows: pd.DataFrame) -> None:
             dedent(f"""
             <div style="border-radius:16px; padding:14px 18px; margin-bottom:12px;
                  background:#fff0e5; border:1px solid #f6ae76; color:#a83c10;">
-              <b>Very Unhealthy AQI (201–300) predicted</b> at: {windows}.
+              <b>Very Unhealthy AQI (201\u2013300) predicted</b> at: {windows}.
               Sensitive groups should reduce prolonged outdoor activity.
             </div>
             """),
@@ -614,7 +541,7 @@ def render_block_means(rows: pd.DataFrame) -> None:
             <div style="flex:1 1 0; min-width:130px; border-radius:16px;
                  background:{tint(color, .10)}; padding:10px 12px; text-align:center;">
               <div style="font-size:11px; color:{MUTED}; font-weight:600;">{label}</div>
-              <div style="font-size:11px; color:{MUTED};">{row.start_time:%d %b %H:%M} → {row.end_time:%d %b %H:%M}</div>
+              <div style="font-size:11px; color:{MUTED};">{row.start_time:%d %b %H:%M} \u2192 {row.end_time:%d %b %H:%M}</div>
               <div style="font-size:22px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
             </div>
             """)
@@ -627,13 +554,13 @@ def render_block_means(rows: pd.DataFrame) -> None:
     )
 
 
-IQAIR_GREEN = "#2e7d32"  # environment -- IQAir reference line
+IQAIR_GREEN = "#2e7d32"
 
 
 def render_main_chart(
     origin: pd.Timestamp,
     rows: pd.DataFrame,
-    refs: dict,
+    iqair_series: pd.Series,
     view: str,
 ) -> None:
     points = rows[rows["kind"] == "point"].copy()
@@ -681,16 +608,18 @@ def render_main_chart(
         )
         layers.extend([model_layer, block_layer])
 
-    iqair = _ref_or_empty(refs, "iqair")
-
-    if view in ("all", "iqair") and len(iqair):
-        iq_df = iqair.reset_index().rename(columns={"index": "time"})
-        iq_layer = (
-            alt.Chart(iq_df)
-            .mark_line(strokeDash=[4, 3], color=IQAIR_GREEN, strokeWidth=2.2)
-            .encode(x=alt.X("time:T", title=None), y=alt.Y("aqi:Q", title="AQI", scale=y_scale), tooltip=tooltip)
-        )
-        layers.append(iq_layer)
+    if view in ("all", "iqair") and len(iqair_series):
+        try:
+            iq_df = iqair_series.reset_index()
+            iq_df.columns = ["time", "aqi"]
+            iq_layer = (
+                alt.Chart(iq_df)
+                .mark_line(strokeDash=[4, 3], color=IQAIR_GREEN, strokeWidth=2.2)
+                .encode(x=alt.X("time:T", title=None), y=alt.Y("aqi:Q", title="AQI", scale=y_scale), tooltip=tooltip)
+            )
+            layers.append(iq_layer)
+        except Exception:
+            pass
 
     chart = (
         alt.layer(*layers)
@@ -702,41 +631,29 @@ def render_main_chart(
     swatches = (
         f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
-        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> IQAir hourly forecast (US AQI⁺)</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> IQAir hourly forecast (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
         "</div>"
     )
     st.markdown(swatches, unsafe_allow_html=True)
 
 
-def _ref_or_empty(refs: dict, key: str) -> pd.Series:
-    series = refs.get(key)
-    return series if series is not None and len(series) else pd.Series(dtype=float, name="aqi")
-
-
-def comparison_frame(rows: pd.DataFrame, refs: dict) -> pd.DataFrame:
-    """Align our 30 outputs with IQAir on the same window.
-
-    The same block-mean logic used for the model's own six/twelve-hour outputs
-    is applied to the reference source: point outputs map to the reference
-    value at that hour; block outputs map to the mean of the reference values
-    inside the block's time window.
-    """
-    iqair = _ref_or_empty(refs, "iqair")
+def comparison_frame(rows: pd.DataFrame, iqair_series: pd.Series) -> pd.DataFrame:
+    """Align our 30 outputs with IQAir on the same window."""
     records = []
     for row in rows.itertuples():
         window = (
             f"{row.start_time:%m-%d %H:%M}"
             if row.kind == "point"
-            else f"{row.start_time:%m-%d %H:%M} → {row.end_time:%m-%d %H:%M}"
+            else f"{row.start_time:%m-%d %H:%M} \u2192 {row.end_time:%m-%d %H:%M}"
         )
         if row.kind == "point":
-            iq_value = iqair.get(row.start_time, np.nan)
+            iq_value = iqair_series.get(row.start_time, np.nan) if len(iqair_series) else np.nan
         else:
             try:
-                idx = pd.DatetimeIndex(iqair.index)
+                idx = pd.DatetimeIndex(iqair_series.index)
                 mask_iq = (idx >= row.start_time) & (idx <= row.end_time)
-                iq_block = iqair[mask_iq]
+                iq_block = iqair_series[mask_iq]
                 iq_value = float(iq_block.mean()) if len(iq_block) else np.nan
             except Exception:
                 iq_value = np.nan
@@ -753,17 +670,17 @@ def comparison_frame(rows: pd.DataFrame, refs: dict) -> pd.DataFrame:
     return frame
 
 
-def render_comparison(rows: pd.DataFrame, refs: dict) -> None:
+def render_comparison(rows: pd.DataFrame, iqair_series: pd.Series) -> None:
     section_header("Comparison", "Our model vs IQAir")
     st.markdown(
         f'<div style="font-size:13px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
-        "IQAir publishes its own hourly forecast for Karak labelled \"US AQI⁺\" -- "
+        "IQAir publishes its own hourly forecast for Karak labelled \"US AQI\u202f\u200a\" -- "
         "the same US EPA AQI scale (categories, colors, breakpoints) this project's "
         "target uses, so the two are directly comparable. Mapped onto our exact 30 "
-        "outputs with the same block-mean logic; diff = ours − IQAir.</div>",
+        "outputs with the same block-mean logic; diff = ours \u2212 IQAir.</div>",
         unsafe_allow_html=True,
     )
-    frame = comparison_frame(rows, refs)
+    frame = comparison_frame(rows, iqair_series)
     if frame.empty or frame["iqair"].isna().all():
         st.caption("IQAir reference unavailable right now (the site rate-limits anonymous reads).")
         return
@@ -775,8 +692,8 @@ def render_comparison(rows: pd.DataFrame, refs: dict) -> None:
             "window": "Valid time",
             "kind": "Output",
             "ours": "Our model",
-            "iqair": "IQAir (US AQI⁺)",
-            "diff_iqair": "Δ vs IQAir",
+            "iqair": "IQAir (US AQI\u202f\u200a)",
+            "diff_iqair": "\u0394 vs IQAir",
         }
     )
     st.dataframe(display, use_container_width=True, hide_index=True)
@@ -788,7 +705,7 @@ def render_output_table(rows: pd.DataFrame) -> None:
     table["window"] = table.apply(
         lambda r: f"{r.start_time:%m-%d %H:%M}"
         if r["kind"] == "point"
-        else f"{r.start_time:%m-%d %H:%M} → {r.end_time:%m-%d %H:%M}",
+        else f"{r.start_time:%m-%d %H:%M} \u2192 {r.end_time:%m-%d %H:%M}",
         axis=1,
     )
     display = table[["window", "kind", "value", "category"]].rename(
@@ -804,74 +721,29 @@ def render_output_table(rows: pd.DataFrame) -> None:
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-def render_shap(features, use_api: bool, source: str) -> None:
-    output_choices = {
-        "t+1h (hourly point)": 0,
-        "t+24h (hourly point)": 23,
-        "t+25..30h (six-hour mean)": 24,
-        "t+49..60h (twelve-hour mean)": 28,
-    }
-    label = st.selectbox("Output to explain", list(output_choices.keys()), index=0)
-    output_index = output_choices[label]
-    try:
-        if use_api:
-            import requests
-
-            response = requests.get(
-                f"{API_URL}/explain", params={"output": output_index, "source": source}, timeout=90
-            )
-            response.raise_for_status()
-            explanation = response.json()
-        else:
-            from app.explain import explain_latest_origin
-
-            explanation = explain_latest_origin(features, output_index=output_index)
-        top = pd.DataFrame(explanation["features"]).head(15)
-        fig, ax = plt.subplots(figsize=(10, max(4, len(top) * 0.42)))
-        colors = ["#d93025" if v >= 0 else "#1a73e8" for v in top["shap"]]
-        ax.barh(top["feature"][::-1], top["shap"][::-1], color=colors[::-1])
-        ax.axvline(0, color="black", lw=0.8)
-        ax.set_xlabel("SHAP value → (positive pushes predicted AQI higher)")
-        ax.set_title(f"SHAP attribution — {explanation['output_column']} (method: {explanation['method']})", fontsize=11)
-        ax.grid(alpha=0.2)
-        for spine in ("top", "right"):
-            ax.spines[spine].set_visible(False)
-        fig.tight_layout()
-        st.pyplot(fig)
-        st.caption(
-            f"Expected value: {explanation['expected_value']:.2f} · "
-            f"model prediction: {explanation['prediction_base_plus_shap']:.2f}"
-        )
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"SHAP explanation failed: {exc}")
-
-
-def render_registry() -> None:
-    """The MLflow registry's champion models (compact list)."""
-    try:
-        from src.model_registry import list_registered
-
-        registered = {model["name"]: model["latest_versions"] for model in list_registered()}
-    except Exception:  # noqa: BLE001 - best-effort
-        registered = {}
-    if not registered:
-        st.caption("Registry unavailable (run `python -m src.model_registry register-hourly`).")
-        return
-    st.subheader("Model registry (MLflow, local)")
-    rows = []
-    for name, versions in list(registered.items())[:4]:
-        latest = versions[-1] if versions else {}
-        aliases = ",".join(latest.get("alias") or []) or "none"
-        rows.append({"model": name, "version": latest.get("version"), "alias": aliases})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-
 def render_model_history() -> None:
+    PROCESSED = config.DATA_PROCESSED_DIR
     hourly_path = PROCESSED / "hourly_model_comparison.csv"
     daily_path = PROCESSED / "model_comparison.csv"
     rolling_path = PROCESSED / "hourly_rolling_origin_comparison.csv"
 
-    render_registry()
+    # Registry
+    try:
+        from src.model_registry import list_registered
+
+        registered = {model["name"]: model["latest_versions"] for model in list_registered()}
+    except Exception:
+        registered = {}
+    if registered:
+        st.subheader("Model registry (MLflow, local)")
+        reg_rows = []
+        for name, versions in list(registered.items())[:4]:
+            latest = versions[-1] if versions else {}
+            aliases = ",".join(latest.get("alias") or []) or "none"
+            reg_rows.append({"model": name, "version": latest.get("version"), "alias": aliases})
+        st.dataframe(pd.DataFrame(reg_rows), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Registry unavailable (run `python -m src.model_registry register-hourly`).")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -897,6 +769,7 @@ def render_model_history() -> None:
             st.dataframe(grouped, use_container_width=True, hide_index=True)
         else:
             st.info("Run `python -m src.train_hourly`.")
+
     with col2:
         st.subheader("Daily holdout (+1/+2/+3 days)")
         if daily_path.exists():
@@ -919,16 +792,17 @@ def render_model_history() -> None:
         )
         st.dataframe(grouped, use_container_width=True, hide_index=True)
     else:
-        st.info("No rolling-origin CSV found — run `python -m src.train_hourly`.")
+        st.info("No rolling-origin CSV found \u2014 run `python -m src.train_hourly`.")
 
 
 def render_eda() -> None:
+    PROCESSED = config.DATA_PROCESSED_DIR
     hourly_path = PROCESSED / "training_frame_hourly.csv"
     daily_path = PROCESSED / "training_frame.csv"
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Hourly rolling AQI — last 90 days")
+        st.subheader("Hourly rolling AQI \u2014 last 90 days")
         if hourly_path.exists():
             frame = pd.read_csv(hourly_path, parse_dates=["time"]).set_index("time").sort_index().tail(90 * 24)
             fig, ax = plt.subplots(figsize=(8, 3.5))
@@ -942,7 +816,7 @@ def render_eda() -> None:
         else:
             st.info("Run `python -m src.train_hourly`.")
     with col2:
-        st.subheader("Daily EPA AQI — last 2 years")
+        st.subheader("Daily EPA AQI \u2014 last 2 years")
         if daily_path.exists():
             frame = pd.read_csv(daily_path, parse_dates=["time"]).set_index("time").sort_index().tail(730)
             fig, ax = plt.subplots(figsize=(8, 3.5))
@@ -972,30 +846,27 @@ def render_eda() -> None:
 
 
 def section_header(kicker: str, title: str) -> None:
-    """Portfolio-style section header: tiny tracked kicker + Space Grotesk title."""
     st.markdown(
         f'<div style="font-size:11px; letter-spacing:.18em; text-transform:uppercase; '
         f'color:{KICKER}; font-weight:700; margin-top:28px;">{kicker}</div>'
-        f'<div style="font-family:\'Space Grotesk\',sans-serif; font-size:20px; font-weight:700; '
-        f'color:#241812; letter-spacing:-.03em; margin:3px 0 12px;">{title}</div>',
+        f"<div style=\"font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; "
+        f"color:#241812; letter-spacing:-.03em; margin:3px 0 12px;\">{title}</div>",
         unsafe_allow_html=True,
     )
 
 
 def render_topbar() -> dict:
-    """One slim toolbar row (like the black chrome bar above it): brand,
-    source pills, refresh, model chip and the API toggle -- nothing else."""
     with st.container(border=True):
-        col_brand, col_source, col_refresh, col_model, col_api = st.columns(
-            [1.5, 1.6, 1.0, 1.8, 1.4], vertical_alignment="center", gap="small"
+        col_brand, col_source, col_refresh, col_model = st.columns(
+            [1.5, 1.6, 1.0, 2.5], vertical_alignment="center", gap="small"
         )
         with col_brand:
             st.markdown(
-                f'<div style="font-family:\'Space Grotesk\',sans-serif; font-size:20px; font-weight:700; '
-                f'letter-spacing:-.04em; background:linear-gradient(120deg,#8f2f12,#f47a32); '
-                f'-webkit-background-clip:text; background-clip:text; color:transparent;">'
-                f'Karak AQI</div>'
-                f'<div style="font-size:11px; color:{MUTED};">{config.CITY_NAME} \u00b7 {config.LOCATION_LABEL}</div>',
+                f"<div style=\"font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; "
+                f"letter-spacing:-.04em; background:linear-gradient(120deg,#8f2f12,#f47a32); "
+                f"-webkit-background-clip:text; background-clip:text; color:transparent;\">"
+                f"Karak AQI</div>"
+                f"<div style=\"font-size:11px; color:{MUTED};\">{config.CITY_NAME} \u00b7 {config.LOCATION_LABEL}</div>",
                 unsafe_allow_html=True,
             )
         with col_source:
@@ -1018,97 +889,52 @@ def render_topbar() -> dict:
                 f'font-size:12px; font-weight:600;">{_model_label()}</span>',
                 unsafe_allow_html=True,
             )
-        with col_api:
-            use_api = st.toggle("FastAPI backend", value=False)
-    return {"source": source, "use_api": use_api}
+    return {"source": source}
 
 
 def main() -> None:
     inject_css()
     options = render_topbar()
-    source, use_api = options["source"], options["use_api"]
+    source = options["source"]
     model_label = _model_label()
+
+    # Load pre-computed forecast
+    forecast = _load_forecast()
+    if not forecast:
+        st.error(
+            "No pre-computed forecast found. Run `python -m src.export_forecast` "
+            "or wait for the CI pipeline to generate one."
+        )
+        return
+
+    origin, rows, iqair_series, current_aqi = _load_forecast_as_frames(forecast)
+
+    # Get IQAir live value for the hero (real-time, cached 5 min)
+    iqair_now = _iqair_now_live()
+    # Fallback to the value stored in the forecast JSON
+    if iqair_now is None:
+        iqair_now = forecast.get("iqair_now")
 
     # Location + meta on the left; AQI hero card on the right.
     left_col, right_col = st.columns([1.0, 0.9], gap="medium")
     with left_col:
         st.markdown(
-            '<div style="font-family:\'Space Grotesk\',sans-serif; font-size:30px; font-weight:700; '
-            'color:#241812; letter-spacing:-.03em; margin:6px 0 2px;">Air quality in Karak</div>'
+            "<div style=\"font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; "
+            "color:#241812; letter-spacing:-.03em; margin:6px 0 2px;\">Air quality in Karak</div>"
             f'<div style="font-size:13px; color:{MUTED};">Air quality index (AQI) and PM2.5 air pollution '
-            f'in Karak · {datetime.now():%d %b %Y, %H:%M} · Asia/Karachi</div>'
+            f'in Karak \u00b7 {datetime.now():%d %b %Y, %H:%M} \u00b7 Asia/Karachi</div>'
             f'<div style="font-size:12px; color:{MUTED}; margin-top:10px;">'
-            f'Forecast starts from the current hour · {model_label}</div>',
+            f"Forecast starts from the current hour \u00b7 {model_label}</div>",
             unsafe_allow_html=True,
         )
     with right_col:
         hero_slot = st.empty()
         hero_slot.markdown(HERO_SKELETON, unsafe_allow_html=True)
 
-    features = None
-    status = st.status("Fetching latest observations and running the 72-hour forecast…", expanded=False)
-    try:
-        if use_api:
-            origin, rows, payload, refs = _load_via_api(source)
-            alerts = pd.DataFrame(payload["alerts"]) if payload.get("alerts") else pd.DataFrame()
-        else:
-            origin, rows, features, refs = _load_direct(source)
-            alerts = rows[rows["category"].isin(["Very Unhealthy", "Hazardous"])]
-    except Exception as exc:  # noqa: BLE001
-        # If store mode failed (e.g. DuckDB empty on Streamlit Cloud),
-        # retry with live mode automatically.
-        if source == "store":
-            status.update(label="Store empty, retrying with live data…", state="running")
-            try:
-                if use_api:
-                    origin, rows, payload, refs = _load_via_api("live")
-                    alerts = pd.DataFrame(payload["alerts"]) if payload.get("alerts") else pd.DataFrame()
-                else:
-                    origin, rows, features, refs = _load_direct("live")
-                    alerts = rows[rows["category"].isin(["Very Unhealthy", "Hazardous"])]
-                source = "live"
-            except Exception as exc2:  # noqa: BLE001
-                status.update(label="Forecast failed", state="error")
-                hero_slot.empty()
-                st.error(f"Could not load a forecast: {exc2}")
-                st.info(
-                    "Check that the model artifacts exist (`python -m src.train_hourly`)."
-                )
-                return
-        else:
-            status.update(label="Forecast failed", state="error")
-            hero_slot.empty()
-            st.error(f"Could not load a forecast: {exc}")
-            st.info(
-                "Check that the model artifacts exist (`python -m src.train_hourly`)."
-            )
-            return
-    status.update(label="Forecast ready", state="complete")
-
-    # IQAir's series starts at the current hour; grab that "now" reading before
-    # anchoring the reference to the forecast window (which starts at t+1h).
-    iqair_now = None
-    iqair_full = refs.get("iqair")
-    if iqair_full is not None and len(iqair_full):
-        iqair_now = float(iqair_full.iloc[0])
-
-    # Anchor every reference line to the model's forecast window: the next hour
-    # (the current hour when the data is fresh) through +72h.
-    window_start, window_end = rows["start_time"].min(), rows["end_time"].max()
-    for key in ("iqair",):
-        series = refs.get(key)
-        if series is not None and len(series):
-            try:
-                idx = pd.DatetimeIndex(series.index)
-                refs[key] = series[(idx >= window_start) & (idx <= window_end)]
-            except Exception:
-                pass
-
     with hero_slot.container():
-        render_hero(origin, rows, source, model_label, refs.get("current") or {}, iqair_now)
+        render_hero(source, rows, current_aqi, iqair_now, model_label)
 
-    render_metric_cards(origin, rows, refs)
-
+    render_metric_cards(origin, rows, iqair_now)
     render_alerts(rows)
 
     section_header("Hourly forecast", "Next 24 hours, hour by hour")
@@ -1120,22 +946,19 @@ def main() -> None:
         format_func=lambda v: {
             "all": "All sources",
             "ours": "Our model",
-            "iqair": "IQAir (US AQI⁺)",
+            "iqair": "IQAir (US AQI\u202f\u200a)",
         }[v],
         index=0,
         horizontal=True,
         label_visibility="collapsed",
     )
-    render_main_chart(origin, rows, refs, view)
+    render_main_chart(origin, rows, iqair_series, view)
 
-    section_header("Extended forecast", "Beyond 24 hours — six- and twelve-hour means")
+    section_header("Extended forecast", "Beyond 24 hours \u2014 six- and twelve-hour means")
     render_block_means(rows)
 
-    render_comparison(rows, refs)
+    render_comparison(rows, iqair_series)
     render_output_table(rows)
-
-    with st.expander("SHAP explanations of the latest prediction"):
-        render_shap(features, use_api, source)
 
     with st.expander("Model comparison & evaluation"):
         render_model_history()
@@ -1144,20 +967,28 @@ def main() -> None:
         render_eda()
 
     st.divider()
-    meta = _pipeline_metadata()
-    fetched = meta["data_fetched"].strftime("%d %b %Y, %H:%M") if meta["data_fetched"] else "—"
-    trained = meta["model_trained"].strftime("%d %b %Y, %H:%M") if meta["model_trained"] else "—"
+    generated = forecast.get("generated_at", "")
+    generated_str = (
+        pd.Timestamp(generated).strftime("%d %b %Y, %H:%M") if generated else "\u2014"
+    )
     status_html = (
         '<div style="display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:'
-        + MUTED + '; padding:8px 0;">'
-        '<span>Last data fetch: <b>' + fetched + '</b> (Open-Meteo, keyless)</span>'
-        '<span>Last model training: <b>' + trained + '</b> (MLflow, file-backed)</span>'
-        '<span>Feature store: DuckDB · Reference: IQAir (US AQI⁺)</span>'
-        '</div>'
-        '<div style="font-size:11px; color:' + MUTED + '; margin-top:4px;">'
-        'Forecasts are estimates, not station measurements. '
-        'Auto-updates via GitHub Actions: feature pipeline (hourly) + training pipeline (daily 01:15 UTC).'
-        '</div>'
+        + MUTED
+        + '; padding:8px 0;">'
+        "<span>Forecast generated: <b>"
+        + generated_str
+        + "</b></span>"
+        "<span>Model: <b>"
+        + forecast.get("model", "aqi-hourly-ridge")
+        + "</b></span>"
+        "<span>Reference: IQAir (US AQI\u202f\u200a)</span>"
+        "</div>"
+        '<div style="font-size:11px; color:'
+        + MUTED
+        + '; margin-top:4px;">'
+        "Pre-computed forecasts served statically. "
+        "Auto-updates via GitHub Actions: feature pipeline (hourly) + training pipeline (daily 01:15 UTC)."
+        "</div>"
     )
     st.markdown(status_html, unsafe_allow_html=True)
 
