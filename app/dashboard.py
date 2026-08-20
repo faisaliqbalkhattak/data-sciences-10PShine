@@ -710,9 +710,13 @@ def comparison_frame(rows: pd.DataFrame, refs: dict) -> pd.DataFrame:
         if row.kind == "point":
             iq_value = iqair.get(row.start_time, np.nan)
         else:
-            mask_iq = (iqair.index >= row.start_time) & (iqair.index <= row.end_time)
-            iq_block = iqair[mask_iq]
-            iq_value = float(iq_block.mean()) if len(iq_block) else np.nan
+            try:
+                idx = pd.DatetimeIndex(iqair.index)
+                mask_iq = (idx >= row.start_time) & (idx <= row.end_time)
+                iq_block = iqair[mask_iq]
+                iq_value = float(iq_block.mean()) if len(iq_block) else np.nan
+            except Exception:
+                iq_value = np.nan
         records.append(
             {
                 "window": window,
@@ -1028,16 +1032,36 @@ def main() -> None:
         else:
             origin, rows, features, refs = _load_direct(source)
             alerts = rows[rows["category"].isin(["Very Unhealthy", "Hazardous"])]
-        status.update(label="Forecast ready", state="complete")
-    except Exception as exc:  # noqa: BLE001 - show a readable error instead of a traceback
-        status.update(label="Forecast failed", state="error")
-        hero_slot.empty()
-        st.error(f"Could not load a forecast: {exc}")
-        st.info(
-            "Check that the model artifacts exist (`python -m src.train_hourly`) and the "
-            "feature store is populated (`python -m src.feature_store backfill-hourly --replace`)."
-        )
-        return
+    except Exception as exc:  # noqa: BLE001
+        # If store mode failed (e.g. DuckDB empty on Streamlit Cloud),
+        # retry with live mode automatically.
+        if source == "store":
+            status.update(label="Store empty, retrying with live data…", state="running")
+            try:
+                if use_api:
+                    origin, rows, payload, refs = _load_via_api("live")
+                    alerts = pd.DataFrame(payload["alerts"]) if payload.get("alerts") else pd.DataFrame()
+                else:
+                    origin, rows, features, refs = _load_direct("live")
+                    alerts = rows[rows["category"].isin(["Very Unhealthy", "Hazardous"])]
+                source = "live"
+            except Exception as exc2:  # noqa: BLE001
+                status.update(label="Forecast failed", state="error")
+                hero_slot.empty()
+                st.error(f"Could not load a forecast: {exc2}")
+                st.info(
+                    "Check that the model artifacts exist (`python -m src.train_hourly`)."
+                )
+                return
+        else:
+            status.update(label="Forecast failed", state="error")
+            hero_slot.empty()
+            st.error(f"Could not load a forecast: {exc}")
+            st.info(
+                "Check that the model artifacts exist (`python -m src.train_hourly`)."
+            )
+            return
+    status.update(label="Forecast ready", state="complete")
 
     # IQAir's series starts at the current hour; grab that "now" reading before
     # anchoring the reference to the forecast window (which starts at t+1h).
