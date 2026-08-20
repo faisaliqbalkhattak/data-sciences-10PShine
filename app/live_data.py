@@ -202,12 +202,13 @@ def _fetch_iqair_hourly_table() -> pd.Series:
             table_end = html.find("</table>", table_start)
             if table_end == -1:
                 raise RuntimeError("IQAir hourly forecast table not found.")
-            cells = re.findall(r"<td>(.*?)</td>", html[table_start:table_end], re.S)
+            section = html[table_start:table_end]
+            # The AQI values live inside aqi-bg-* divs with a <p> containing the number.
+            # The HTML has nested divs between the aqi-bg class and the <p>, so use
+            # a dotall match across the intermediate tags.
             values: list[float] = []
-            for cell in cells:
-                match = re.search(r"aqi-bg-[a-z-]+[^>]*>\s*<p[^>]*>(\d+)</p>", cell)
-                if match:
-                    values.append(float(match.group(1)))
+            for m in re.finditer(r"aqi-bg-[a-z-]+.*?<p[^>]*>\s*(\d+)\s*</p>", section, re.S):
+                values.append(float(m.group(1)))
             if not values:
                 raise RuntimeError("No AQI values found in the IQAir hourly forecast table.")
             origin = _current_hour_local()
