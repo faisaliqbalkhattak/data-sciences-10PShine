@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 
+mlflow = pytest.importorskip("mlflow", reason="MLflow not installed (training pipeline only)")
+
 from src.model_registry import (
     HOURLY_MODEL_NAME,
     list_registered,
