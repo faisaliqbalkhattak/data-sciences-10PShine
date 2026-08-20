@@ -233,7 +233,20 @@ HERO_SKELETON = """
 
 
 def inject_css() -> None:
-    st.markdown(APP_CSS, unsafe_allow_html=True)
+    # Inject mobile-responsive CSS on top of the base styles
+    mobile_css = """
+    <style>
+    @media (max-width: 768px) {
+        .block-container { padding-top: 3.2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
+        [data-testid="stVerticalBlockBorderWrapper"] { padding: 4px 10px !important; }
+        div[data-testid="stRadio"] label { font-size: 11px !important; padding: 5px 4px !important; }
+        div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 12px !important; }
+        div[data-testid="stMetric"] { padding: 10px 12px !important; }
+        div[data-testid="stMetricValue"] { font-size: 20px !important; }
+    }
+    </style>
+    """
+    st.markdown(APP_CSS + mobile_css, unsafe_allow_html=True)
 
 
 def category_color(category: str | None) -> str:
@@ -286,9 +299,14 @@ def _pipeline_metadata() -> dict:
 # --------------------------------------------------------------------------
 # Data fetching (same contract as before, plus current-hour anchoring)
 # --------------------------------------------------------------------------
-def _load_direct(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
-    """Forecast via direct function calls (no API server needed)."""
-    from app.explain import explain_latest_origin
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_load(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
+    """Cached forecast via direct function calls (no API server needed).
+
+    TTL of 300 seconds (5 minutes) so repeated page loads and user refreshes
+    do not hammer Open-Meteo.  The ``source`` argument is the cache key;
+    switching Store/Live invalidates automatically.
+    """
     from app.live_data import current_conditions, load_latest_hourly
     from src.inference_hourly import predict_latest
     from src.train_hourly import build_hourly_training_frame
@@ -301,6 +319,11 @@ def _load_direct(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
     features = build_hourly_training_frame(hourly, include_targets=False)
     refs = {"iqair": _iqair_reference(), "current": current_conditions(hourly)}
     return origin, rows, features, refs
+
+
+def _load_direct(source: str) -> tuple[pd.Timestamp, pd.DataFrame, list, dict]:
+    """Forecast via direct function calls (no API server needed)."""
+    return _cached_load(source)
 
 
 def _load_via_api(source: str) -> tuple[pd.Timestamp, pd.DataFrame, dict, dict]:
@@ -1006,8 +1029,7 @@ def main() -> None:
     source, use_api = options["source"], options["use_api"]
     model_label = _model_label()
 
-    # Location prominent on the left; the AQI metric card sits on the right
-    # (the IQAir arrangement), with the toolbar already rendered above.
+    # Location + meta on the left; AQI hero card on the right.
     left_col, right_col = st.columns([1.0, 0.9], gap="medium")
     with left_col:
         st.markdown(
@@ -1076,7 +1098,11 @@ def main() -> None:
     for key in ("iqair",):
         series = refs.get(key)
         if series is not None and len(series):
-            refs[key] = series[(series.index >= window_start) & (series.index <= window_end)]
+            try:
+                idx = pd.DatetimeIndex(series.index)
+                refs[key] = series[(idx >= window_start) & (idx <= window_end)]
+            except Exception:
+                pass
 
     with hero_slot.container():
         render_hero(origin, rows, source, model_label, refs.get("current") or {}, iqair_now)
