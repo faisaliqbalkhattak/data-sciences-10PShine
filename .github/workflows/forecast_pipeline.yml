@@ -67,6 +67,8 @@ jobs:
             echo "No changes to forecast JSON"
           else
             git commit -m "ci: refresh forecast JSON [skip ci]"
+            git stash --include-untracked
             git pull --rebase origin main
+            git stash pop || true
             git push
           fi
