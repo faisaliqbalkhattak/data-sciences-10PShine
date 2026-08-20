@@ -83,5 +83,6 @@ jobs:
             echo "No changes to model eval JSON"
           else
             git commit -m "ci: refresh model evaluation JSON [skip ci]"
+            git pull --rebase origin main
             git push
           fi
