@@ -985,6 +985,15 @@ def main() -> None:
     if iqair_now is None:
         iqair_now = forecast.get("iqair_now")
 
+    # Re-anchor IQAir series to the forecast origin so both lines
+    # start at the same time on the chart.
+    if len(iqair_series) and origin is not None:
+        iqair_series = pd.Series(
+            iqair_series.values,
+            index=pd.date_range(origin, periods=len(iqair_series), freq="h"),
+            name="aqi",
+        )
+
     # Location + meta on the left; AQI hero card on the right.
     left_col, right_col = st.columns([1.0, 0.9], gap="medium")
     with left_col:
@@ -992,9 +1001,9 @@ def main() -> None:
             "<div style=\"font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; "
             "color:#241812; letter-spacing:-.03em; margin:6px 0 2px;\">Air quality in Karak</div>"
             f'<div style="font-size:13px; color:{MUTED};">Air quality index (AQI) and PM2.5 air pollution '
-            f'in Karak \u00b7 {datetime.now().replace(minute=0, second=0, microsecond=0):%d %b %Y, %H:00} \u00b7 Asia/Karachi</div>'
+            f'in Karak \u00b7 As of {origin:%d %b %Y, %H:00} \u00b7 Asia/Karachi</div>'
             f'<div style="font-size:12px; color:{MUTED}; margin-top:10px;">'
-            f"Forecast starts from the current hour \u00b7 {model_label}</div>",
+            f"Forecast origin \u00b7 {model_label}</div>",
             unsafe_allow_html=True,
         )
     with right_col:
