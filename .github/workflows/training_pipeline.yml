@@ -26,8 +26,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install pinned dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Install training pipeline dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-training.txt
 
       - name: Fetch raw Open-Meteo data (keyless)
         run: python -m src.build_features --fetch

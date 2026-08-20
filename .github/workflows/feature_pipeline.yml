@@ -30,8 +30,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install pinned dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Install feature pipeline dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-feature.txt
 
       - name: Run the test suite (CI check)
         run: python -m pytest -q

@@ -1,9 +1,6 @@
 # Dashboard dependencies for Streamlit Community Cloud.
-# Strict subset of root requirements.txt: no mlflow, no fastapi, no
-# jupyter, no pytest -- keeping the install fast and avoiding the pyarrow
-# build failure (pyarrow needs cmake which Streamlit Cloud does not provide).
-# TensorFlow is included so the dashboard can load a Keras/LSTM model if it
-# becomes the champion during automated training.
+# The dashboard reads pre-computed forecast JSON (no runtime inference),
+# so tensorflow, mlflow, statsmodels, and other heavy packages are NOT needed here.
 numpy==1.26.4
 pandas==2.2.3
 scikit-learn==1.5.2
@@ -15,4 +12,3 @@ streamlit==1.39.0
 shap==0.46.0
 duckdb==1.1.3
 xgboost==2.1.1
-tensorflow==2.17.0

@@ -1,0 +1,17 @@
+# Training pipeline: build features, train models, register in MLflow.
+# Includes tensorflow for LSTM and statsmodels for SARIMA.
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+xgboost==2.1.1
+statsmodels==0.14.4
+joblib==1.4.2
+requests==2.32.3
+python-dotenv==1.0.1
+duckdb==1.1.3
+mlflow==2.18.0
+tensorflow==2.17.0
+shap==0.46.0
+matplotlib==3.9.2
+seaborn==0.13.2
+pytest==8.3.3

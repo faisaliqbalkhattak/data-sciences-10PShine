@@ -96,7 +96,7 @@ def export_forecast(source: str = "live") -> Path:
     Path
         The path to the written JSON file.
     """
-    from app.live_data import current_conditions, iqair_forecast_aqi, load_latest_hourly
+    from app.live_data import current_conditions, load_latest_hourly
 
     logger.info("Exporting forecast (source=%s)", source)
 
@@ -117,15 +117,20 @@ def export_forecast(source: str = "live") -> Path:
     # Current hour AQI from observed data
     current_aqi = _current_aqi_from_data(hourly)
 
-    # IQAir reference
-    iqair_series = None
+    # IQAir reference: read from the pre-fetched JSON file.
+    # The IQAir fetch workflow (iqair_pipeline.yml) stores data in
+    # data/iqair_forecast.json so we don't scrape at runtime.
+    iqair_ref_path = config.PROJECT_ROOT / "data" / "iqair_forecast.json"
+    iqair_ref = []
     iqair_now = None
-    try:
-        iqair_series = iqair_forecast_aqi()
-        if len(iqair_series):
-            iqair_now = round(float(iqair_series.iloc[0]), 1)
-    except Exception:
-        pass
+    if iqair_ref_path.exists():
+        try:
+            iqair_ref = json.loads(iqair_ref_path.read_text(encoding="utf-8"))
+            if iqair_ref:
+                iqair_now = round(float(iqair_ref[0]["aqi"]), 1)
+        except Exception as exc:
+            logger.warning("Failed to read IQAir JSON: %s", exc)
+    logger.info("Loaded %d IQAir refs from %s", len(iqair_ref), iqair_ref_path)
 
     # Build the outputs array
     outputs = []
@@ -138,15 +143,6 @@ def export_forecast(source: str = "live") -> Path:
             "value": round(float(row["value"]), 1),
             "category": aqi_category(row["value"]),
         })
-
-    # IQAir reference array
-    iqair_ref = []
-    if iqair_series is not None and len(iqair_series):
-        for ts, val in iqair_series.items():
-            iqair_ref.append({
-                "time": pd.Timestamp(ts).isoformat(),
-                "aqi": round(float(val), 1),
-            })
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

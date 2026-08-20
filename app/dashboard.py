@@ -45,6 +45,7 @@ st.set_page_config(
 )
 
 FORECAST_PATH = PROJECT_ROOT / "data" / "static_forecast.json"
+IQAIR_PATH = PROJECT_ROOT / "data" / "iqair_forecast.json"
 API_URL = os.environ.get("AQI_API_URL", "http://127.0.0.1:8000")
 
 # Semantic palette tailored from the portfolio design: green for environment,
@@ -282,17 +283,39 @@ def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame
     return origin, rows, iqair_series, current_aqi
 
 
-def _iqair_now_live() -> float | None:
-    """Fetch IQAir's live current AQI (cached 5 min). Real-time reference."""
-    from app.live_data import iqair_forecast_aqi
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_iqair_forecast() -> list[dict]:
+    """Read the pre-fetched IQAir forecast from the stored JSON file.
 
+    The IQAir fetch workflow (iqair_pipeline.yml) stores data in
+    data/iqair_forecast.json so we never scrape at runtime.
+    """
+    if not IQAIR_PATH.exists():
+        return []
     try:
-        series = iqair_forecast_aqi()
-        if len(series):
-            return round(float(series.iloc[0]), 1)
+        return json.loads(IQAIR_PATH.read_text(encoding="utf-8"))
     except Exception:
-        pass
+        return []
+
+
+def _iqair_now_from_json() -> float | None:
+    """Get IQAir's current AQI from the pre-fetched JSON file."""
+    data = _load_iqair_forecast()
+    if data:
+        return round(float(data[0]["aqi"]), 1)
     return None
+
+
+def _iqair_series_from_json() -> pd.Series:
+    """Get IQAir's hourly forecast as a Series from the pre-fetched JSON."""
+    data = _load_iqair_forecast()
+    if not data:
+        return pd.Series(dtype=float, name="aqi")
+    return pd.Series(
+        [item["aqi"] for item in data],
+        index=pd.to_datetime([item["time"] for item in data]),
+        name="aqi",
+    )
 
 
 def _model_label() -> str:
@@ -907,10 +930,11 @@ def main() -> None:
         )
         return
 
-    origin, rows, iqair_series, current_aqi = _load_forecast_as_frames(forecast)
+    origin, rows, _, current_aqi = _load_forecast_as_frames(forecast)
 
-    # Get IQAir live value for the hero (real-time, cached 5 min)
-    iqair_now = _iqair_now_live()
+    # IQAir data: read from pre-fetched JSON (zero runtime fetches)
+    iqair_series = _iqair_series_from_json()
+    iqair_now = _iqair_now_from_json()
     # Fallback to the value stored in the forecast JSON
     if iqair_now is None:
         iqair_now = forecast.get("iqair_now")
@@ -996,18 +1020,20 @@ def main() -> None:
     with st.expander("Debug info", expanded=False):
         st.json({
             "forecast_file": str(FORECAST_PATH),
-            "file_exists": FORECAST_PATH.exists(),
+            "forecast_exists": FORECAST_PATH.exists(),
+            "iqair_file": str(IQAIR_PATH),
+            "iqair_file_exists": IQAIR_PATH.exists(),
             "generated_at": forecast.get("generated_at"),
             "source": forecast.get("source"),
             "model": forecast.get("model"),
             "outputs_count": len(forecast.get("outputs", [])),
-            "iqair_forecast_count": len(forecast.get("iqair_forecast", [])),
-            "iqair_now": forecast.get("iqair_now"),
-            "current_aqi": forecast.get("current_aqi"),
-            "iqair_now_live": iqair_now,
-            "origin": str(origin) if 'origin' in dir() else None,
-            "rows_count": len(rows) if 'rows' in dir() else 0,
-            "iqair_series_len": len(iqair_series) if 'iqair_series' in dir() else 0,
+            "iqair_from_json_count": len(_load_iqair_forecast()),
+            "iqair_from_forecast_count": len(forecast.get("iqair_forecast", [])),
+            "iqair_now": iqair_now,
+            "current_aqi": current_aqi,
+            "origin": str(origin),
+            "rows_count": len(rows),
+            "iqair_series_len": len(iqair_series),
         })
 
 
