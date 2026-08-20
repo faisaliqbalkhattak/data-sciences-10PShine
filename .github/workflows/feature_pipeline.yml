@@ -48,16 +48,6 @@ jobs:
       - name: Inspect stored feature schema
         run: python -m src.feature_store stats
 
-      - name: Export pre-computed forecast (static JSON)
-        run: python -m src.export_forecast --source live
-
-      - name: Commit forecast JSON (skip CI to avoid loops)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/static_forecast.json
-          git diff --cached --quiet || git commit -m "ci: refresh forecast JSON [skip ci]" && git push
-
       - name: Upload feature store artifact
         uses: actions/upload-artifact@v4
         with:

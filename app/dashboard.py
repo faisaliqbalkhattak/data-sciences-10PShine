@@ -992,6 +992,24 @@ def main() -> None:
     )
     st.markdown(status_html, unsafe_allow_html=True)
 
+    # Debug panel: shows data state for troubleshooting
+    with st.expander("Debug info", expanded=False):
+        st.json({
+            "forecast_file": str(FORECAST_PATH),
+            "file_exists": FORECAST_PATH.exists(),
+            "generated_at": forecast.get("generated_at"),
+            "source": forecast.get("source"),
+            "model": forecast.get("model"),
+            "outputs_count": len(forecast.get("outputs", [])),
+            "iqair_forecast_count": len(forecast.get("iqair_forecast", [])),
+            "iqair_now": forecast.get("iqair_now"),
+            "current_aqi": forecast.get("current_aqi"),
+            "iqair_now_live": iqair_now,
+            "origin": str(origin) if 'origin' in dir() else None,
+            "rows_count": len(rows) if 'rows' in dir() else 0,
+            "iqair_series_len": len(iqair_series) if 'iqair_series' in dir() else 0,
+        })
+
 
 if __name__ == "__main__":
     main()
