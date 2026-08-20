@@ -86,13 +86,14 @@ def _export_eval() -> Path:
             pivot = df.pivot_table(
                 index="model", columns="horizon_days", values="rmse"
             ).round(2)
-            result["daily_holdout"] = {
-                "columns": [str(c) for c in pivot.columns.tolist()],
-                "rows": [
-                    {"model": model, "rmse": row.tolist()}
-                    for model, row in pivot.iterrows()
-                ],
-            }
+            # Flatten into rows like {"model": "persistence", "1d_rmse": 18.5, "2d_rmse": 22.9, ...}
+            records = []
+            for model, row in pivot.iterrows():
+                rec = {"model": model}
+                for col in pivot.columns:
+                    rec[f"{col}d_rmse"] = row[col]
+                records.append(rec)
+            result["daily_holdout"] = {"rows": records}
         except Exception as exc:
             logger.warning("Daily holdout read failed: %s", exc)
             result["daily_holdout"] = {}

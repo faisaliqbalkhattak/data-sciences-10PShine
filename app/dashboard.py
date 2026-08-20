@@ -798,10 +798,7 @@ def render_model_history() -> None:
         st.subheader("Daily holdout (+1/+2/+3 days)")
         daily = eval_data.get("daily_holdout", {})
         if daily and "rows" in daily:
-            rows = daily["rows"]
-            columns = daily["columns"]
-            pivot = pd.DataFrame(rows).set_index("model")
-            pivot.columns = columns
+            pivot = pd.DataFrame(daily["rows"]).set_index("model")
             st.dataframe(pivot, use_container_width=True)
         else:
             st.info("No daily holdout data available.")
