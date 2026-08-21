@@ -993,11 +993,13 @@ def render_weather_insights() -> None:
     st.markdown(
         f'<div style="font-size:12px; color:{MUTED}; margin-bottom:14px; line-height:1.5; '
         f'padding:8px 12px; background:#f6eee7; border-left:3px solid {KICKER}; border-radius:4px;">'
-        "<b>How these charts were made:</b> Historical weather data (2000\u20132026) was fetched from the "
-        "Open-Meteo Archive API for Karak (33.13°N, 71.54°E). Hourly PM2.5, PM10, ozone, and weather "
-        "variables were merged with Open-Meteo AQ observations. US EPA AQI sub-indices were computed "
-        "from raw pollutant concentrations using the standard breakpoint tables. The charts were then "
-        "generated with matplotlib and stored in the karAQI-data repository.</div>",
+        "<b>How these charts were made:</b> The weather trends chart uses historical weather data "
+        "(2000\u20132026) fetched from the Open-Meteo Archive API for Karak (33.13°N, 71.54°E) — "
+        "temperature, precipitation, wind, and humidity only, no AQI. The seasonality chart was built "
+        "by merging Open-Meteo hourly PM2.5, PM10, and ozone observations with weather variables, then "
+        "computing US EPA AQI sub-indices from raw pollutant concentrations using the standard breakpoint "
+        "tables (pollutant-specific averaging windows and unit conversions). Both charts were generated "
+        "with matplotlib and stored in the karAQI-data repository.</div>",
         unsafe_allow_html=True,
     )
 
