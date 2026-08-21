@@ -322,13 +322,13 @@ def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame
 
 def _ref_now_from_forecast() -> float | None:
     """Get the reference AQI now value from the forecast JSON."""
-    forecast = _load_forecast_json()
+    forecast = _load_forecast()
     return forecast.get("ref_now")
 
 
 def _ref_series_from_forecast() -> pd.Series:
     """Get the reference AQI series from the forecast JSON."""
-    forecast = _load_forecast_json()
+    forecast = _load_forecast()
     ref_data = forecast.get("ref_forecast", [])
     if not ref_data:
         return pd.Series(dtype=float, name="aqi")
