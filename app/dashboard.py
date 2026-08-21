@@ -403,14 +403,14 @@ def render_hero(
     if source == "live" and ref_now is not None:
         badge_aqi = ref_now
         badge_category = aqi_category(ref_now) or our_category
-        badge_label = "US AQI\u202f\u00b7\u202fOpen-Meteo live"
+        badge_label = "US AQI\u202f\u00b7\u202fLive"
         secondary_line = f"Ours (this hour): {our_current:.0f}" if our_current is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
     else:
         badge_aqi = our_current if our_current is not None else model_next
         badge_category = our_category if our_current is not None else model_next_category
         badge_label = "US AQI\u202f\u00b7\u202fthis hour"
-        secondary_line = f"Open-Meteo: {ref_now:.0f}" if ref_now is not None else ""
+        secondary_line = f"Live: {ref_now:.0f}" if ref_now is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
 
     color = category_color(badge_category)
@@ -474,7 +474,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float
         ("Forecast origin", origin.strftime("%m-%d %H:%M"), MUTED, ""),
         ("Peak hourly \u00b7 next 24h", f"{peak24:.0f}", MUTED, ""),
         ("Max \u00b7 full 72h", f"{max72:.0f}", MUTED, ""),
-        ("Open-Meteo now", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
+        ("Live now", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
     ]
     cards = []
     for label, value, accent, note in tiles:
@@ -719,7 +719,7 @@ def render_main_chart(
     swatches = (
         f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
-        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Open-Meteo AQ forecast (US AQI\u202f\u200a)</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Live AQ forecast (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
         "</div>"
     )
@@ -759,10 +759,10 @@ def comparison_frame(rows: pd.DataFrame, ref_series: pd.Series) -> pd.DataFrame:
 
 
 def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
-    section_header("Comparison", "Our model vs Open-Meteo AQ forecast")
+    section_header("Comparison", "Our model vs live reference")
     st.markdown(
         f'<div style="font-size:13px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
-        "Open-Meteo provides a free, keyless hourly US AQI forecast for Karak -- "
+        "A free, keyless hourly US AQI forecast for Karak -- "
         "the same US EPA AQI scale (categories, colors, breakpoints) this project's "
         "target uses, so the two are directly comparable. Mapped onto our exact 30 "
         "outputs with the same block-mean logic; diff = ours \u2212 reference.</div>",
@@ -770,7 +770,7 @@ def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
     )
     frame = comparison_frame(rows, ref_series)
     if frame.empty or frame["reference"].isna().all():
-        st.caption("Reference data unavailable. The Open-Meteo API may be temporarily unreachable.")
+        st.caption("Reference data unavailable. The forecast API may be temporarily unreachable.")
         return
     display = frame.copy()
     for col in ("ours", "reference", "diff_ref"):
@@ -780,7 +780,7 @@ def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
             "window": "Valid time",
             "kind": "Output",
             "ours": "Our model",
-            "reference": "Open-Meteo AQ (US AQI\u202f\u200a)",
+            "reference": "Live AQ (US AQI\u202f\u200a)",
             "diff_ref": "\u0394 vs ref",
         }
     )
@@ -1075,8 +1075,8 @@ def section_header(kicker: str, title: str) -> None:
 
 def render_topbar() -> dict:
     with st.container(border=True):
-        col_brand, col_source, col_refresh, col_model = st.columns(
-            [1.5, 1.6, 1.0, 2.5], vertical_alignment="center", gap="small"
+        col_brand, col_source, col_model = st.columns(
+            [1.5, 1.6, 2.5], vertical_alignment="center", gap="small"
         )
         with col_brand:
             st.markdown(
@@ -1091,20 +1091,23 @@ def render_topbar() -> dict:
             source = st.radio(
                 "Data source",
                 options=["store", "live"],
-                format_func=lambda v: "My model" if v == "store" else "Open-Meteo",
+                format_func=lambda v: "My model" if v == "store" else "Live",
                 index=0,
                 horizontal=True,
                 label_visibility="collapsed",
             )
-        with col_refresh:
-            if st.button("Refresh"):
-                st.cache_data.clear()
-                st.rerun()
         with col_model:
+            parts = _model_label().split(" (", 1)
+            model_name = parts[0]
+            model_updated = f"({parts[1]}" if len(parts) > 1 else ""
             st.markdown(
+                f'<div style="line-height:1.3;">'
+                f'<span style="font-size:10px; color:{MUTED}; text-transform:uppercase; letter-spacing:.1em;">Model used for prediction</span><br>'
                 f'<span style="display:inline-block; background:#e8f0fe; color:#1a56c9; '
-                f'border:1px solid #c5d7f2; border-radius:999px; padding:3px 12px; '
-                f'font-size:12px; font-weight:600;">⚙️ {_model_label()}</span>',
+                f'border:1px solid #c5d7f2; border-radius:999px; padding:2px 10px; '
+                f'font-size:12px; font-weight:600;">{model_name}</span>'
+                f' <span style="font-size:11px; color:{MUTED};">{model_updated}</span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
     return {"source": source}
@@ -1176,7 +1179,7 @@ def main() -> None:
         format_func=lambda v: {
             "all": "All sources",
             "ours": "Our model",
-            "ref": "Open-Meteo AQ (US AQI\u202f\u200a)",
+            "ref": "Live AQ (US AQI\u202f\u200a)",
         }[v],
         index=0,
         horizontal=True,
@@ -1188,7 +1191,7 @@ def main() -> None:
     render_block_means(rows)
 
     render_comparison(rows, ref_series)
-    render_output_table(rows)
+    render_prediction_bar_chart(rows)
 
     with st.expander("Model comparison & evaluation"):
         render_model_history()
