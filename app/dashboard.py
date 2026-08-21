@@ -596,6 +596,55 @@ def render_block_means(rows: pd.DataFrame) -> None:
 IQAIR_GREEN = "#2e7d32"
 
 
+def render_prediction_bar_chart(rows: pd.DataFrame) -> None:
+    """Render all 30 forecast outputs as a colored bar chart (AQI category colors)."""
+    points = rows[rows["kind"] == "point"].copy()
+    blocks = rows[rows["kind"] != "point"].copy()
+
+    # Build bar data from points first, then block means
+    bars = []
+    for _, r in points.iterrows():
+        bars.append({
+            "label": pd.Timestamp(r["start_time"]).strftime("%d %b %H:%M"),
+            "aqi": float(r["value"]),
+            "color": category_color(r.get("category") or aqi_category(r["value"])),
+        })
+    for _, r in blocks.iterrows():
+        bars.append({
+            "label": f"{pd.Timestamp(r['start_time']):%d %b %H:%M}→{pd.Timestamp(r['end_time']):%H:%M}",
+            "aqi": float(r["value"]),
+            "color": category_color(r.get("category") or aqi_category(r["value"])),
+        })
+    bar_df = pd.DataFrame(bars)
+
+    chart = (
+        alt.Chart(bar_df)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, width=14)
+        .encode(
+            x=alt.X("label:N", title=None, axis=alt.Axis(labelAngle=-45, labelFontSize=9, labelColor=MUTED)),
+            y=alt.Y("aqi:Q", title="US AQI", axis=alt.Axis(gridColor="#eadbd0", labelColor=MUTED, titleColor=INK)),
+            color=alt.Color("color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("label:N", title="Time"),
+                alt.Tooltip("aqi:Q", title="AQI", format=".0f"),
+            ],
+        )
+        .properties(height=320)
+        .configure_view(strokeOpacity=0)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+    # Category legend
+    legend = (
+        '<div style="font-size:11px; color:' + MUTED + '; display:flex; gap:12px; flex-wrap:wrap; padding:2px 0 8px;">'
+    )
+    for low, high, cat in BAND_BOUNDS:
+        c = category_color(cat)
+        legend += f'<span><span style="display:inline-block;width:10px;height:10px;background:{c};border-radius:2px;margin-right:3px;vertical-align:middle;"></span>{cat}</span>'
+    legend += "</div>"
+    st.markdown(legend, unsafe_allow_html=True)
+
+
 def render_main_chart(
     origin: pd.Timestamp,
     rows: pd.DataFrame,
@@ -769,6 +818,14 @@ def render_model_history() -> None:
     registry = eval_data.get("registry", [])
     if registry:
         st.subheader("Model registry (MLflow)")
+        st.markdown(
+            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
+            "MLflow tracks every training run and registers the best-performing model for each horizon. "
+            "Each row is a registered model: the name identifies the target (e.g. <b>aqi-hourly-ridge</b> = our hourly Ridge model), "
+            "the version is the training iteration, and the alias (e.g. <b>champion</b>) marks which version is currently served. "
+            "When the daily training pipeline runs, it re-evaluates all models and promotes the winner to champion.</div>",
+            unsafe_allow_html=True,
+        )
         st.dataframe(pd.DataFrame(registry), use_container_width=True, hide_index=True)
     else:
         st.caption("Registry unavailable.")
@@ -808,6 +865,16 @@ def render_model_history() -> None:
     rolling = eval_data.get("rolling_origin", [])
     if rolling:
         st.subheader("Rolling-origin evaluation (3 expanding folds, 72h embargo)")
+        st.markdown(
+            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
+            "A more realistic evaluation than a single train/test split. The model is trained on expanding windows "
+            "of historical data and tested on the next 72 hours, then the window rolls forward. "
+            "The 72-hour embargo prevents data leakage (no test data overlaps with training lag features). "
+            "<b>RMSE</b> = root mean squared error (lower is better). "
+            "<b>Category accuracy</b> = % of predictions in the correct EPA AQI band. "
+            "<b>High AQI recall</b> = % of truly polluted hours the model correctly flags.</div>",
+            unsafe_allow_html=True,
+        )
         st.dataframe(pd.DataFrame(rolling), use_container_width=True, hide_index=True)
 
 
@@ -923,6 +990,16 @@ def render_weather_insights() -> None:
         "inversions (December\u2013February) are the primary drivers of poor air quality.</div>",
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<div style="font-size:12px; color:{MUTED}; margin-bottom:14px; line-height:1.5; '
+        f'padding:8px 12px; background:#f6eee7; border-left:3px solid {KICKER}; border-radius:4px;">'
+        "<b>How these charts were made:</b> Historical weather data (2000\u20132026) was fetched from the "
+        "Open-Meteo Archive API for Karak (33.13°N, 71.54°E). Hourly PM2.5, PM10, ozone, and weather "
+        "variables were merged with Open-Meteo AQ observations. US EPA AQI sub-indices were computed "
+        "from raw pollutant concentrations using the standard breakpoint tables. The charts were then "
+        "generated with matplotlib and stored in the karAQI-data repository.</div>",
+        unsafe_allow_html=True,
+    )
 
     img_urls = {
         "weather_trends": f"{IMAGES_REPO}/karak_weather_trends_2000_present.png",
@@ -1012,7 +1089,7 @@ def render_topbar() -> dict:
             source = st.radio(
                 "Data source",
                 options=["store", "live"],
-                format_func=lambda v: "Store" if v == "store" else "Live",
+                format_func=lambda v: "My model" if v == "store" else "Open-Meteo",
                 index=0,
                 horizontal=True,
                 label_visibility="collapsed",
@@ -1025,7 +1102,7 @@ def render_topbar() -> dict:
             st.markdown(
                 f'<span style="display:inline-block; background:#e8f0fe; color:#1a56c9; '
                 f'border:1px solid #c5d7f2; border-radius:999px; padding:3px 12px; '
-                f'font-size:12px; font-weight:600;">{_model_label()}</span>',
+                f'font-size:12px; font-weight:600;">⚙️ {_model_label()}</span>',
                 unsafe_allow_html=True,
             )
     return {"source": source}
@@ -1087,6 +1164,9 @@ def main() -> None:
 
     section_header("Hourly forecast", "Next 24 hours, hour by hour")
     render_hourly_strip(rows)
+
+    section_header("30-output forecast", "Full 72-hour prediction bar chart")
+    render_prediction_bar_chart(rows)
 
     view = st.radio(
         "Compare",
