@@ -1084,7 +1084,7 @@ def render_topbar() -> dict:
                 f"letter-spacing:-.04em; background:linear-gradient(120deg,#8f2f12,#f47a32); "
                 f"-webkit-background-clip:text; background-clip:text; color:transparent;\">"
                 f"Karak AQI</div>"
-                f"<div style=\"font-size:11px; color:{MUTED};\">{config.CITY_NAME} \u00b7 {config.LOCATION_LABEL}</div>",
+                f"<div style=\"font-size:11px; color:{MUTED};\">{config.CITY_NAME}</div>",
                 unsafe_allow_html=True,
             )
         with col_source:
