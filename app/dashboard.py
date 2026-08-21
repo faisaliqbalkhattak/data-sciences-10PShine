@@ -151,16 +151,16 @@ div[data-testid="stCaptionContainer"] p { color: #5c4a3f !important; }
 /* Segmented control */
 div[data-testid="stRadio"] > div[role="radiogroup"] {
     display: flex !important; flex-direction: row !important; align-items: center; gap: 4px;
-    background: #eadbd0; border-radius: 999px; padding: 4px; width: 100%;
+    padding: 0; width: 100%;
 }
 div[data-testid="stRadio"] label {
     flex: 1 1 0; text-align: center; border-radius: 999px; padding: 7px 6px; margin: 0;
     color: #5c4a3f !important; font-weight: 600; font-size: 13px; white-space: nowrap;
 }
-div[data-testid="stRadio"] label:hover { background: rgba(255, 255, 255, 0.55); }
+div[data-testid="stRadio"] label:hover { background: rgba(234, 219, 208, 0.5); }
 div[data-testid="stRadio"] label:has(input:checked) {
-    background: #ffffff !important;
-    box-shadow: 0 1px 3px rgba(91, 44, 18, 0.25), 0 0 0 1px #eadbd0;
+    background: #eadbd0 !important;
+    box-shadow: 0 1px 3px rgba(91, 44, 18, 0.15);
 }
 div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"],
 div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {
