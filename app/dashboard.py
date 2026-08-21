@@ -956,7 +956,7 @@ def render_weather_insights() -> None:
         if img_bytes is None and img_paths["weather_trends"].exists():
             img_bytes = io.BytesIO(img_paths["weather_trends"].read_bytes())
         if img_bytes is not None:
-            st.image(img_bytes, use_container_width=True)
+            st.image(img_bytes, use_column_width=True)
         else:
             st.info("Weather trends image not available yet.")
 
@@ -979,7 +979,7 @@ def render_weather_insights() -> None:
         if img_bytes is None and img_paths["seasonality"].exists():
             img_bytes = io.BytesIO(img_paths["seasonality"].read_bytes())
         if img_bytes is not None:
-            st.image(img_bytes, use_container_width=True)
+            st.image(img_bytes, use_column_width=True)
         else:
             st.info("Seasonality image not available yet.")
 
