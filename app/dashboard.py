@@ -1176,7 +1176,7 @@ def main() -> None:
         format_func=lambda v: {
             "all": "All sources",
             "ours": "Our model",
-            "ref": "Live from Open-Meteo (US AQI\u202f\u200a)",
+            "ref": "Live (Open-Meteo)",
         }[v],
         index=0,
         horizontal=True,
@@ -1188,6 +1188,7 @@ def main() -> None:
     render_block_means(rows)
 
     render_comparison(rows, ref_series)
+    render_prediction_bar_chart(rows)
 
     with st.expander("Model comparison & evaluation"):
         render_model_history()
