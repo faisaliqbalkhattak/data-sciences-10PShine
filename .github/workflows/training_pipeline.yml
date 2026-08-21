@@ -79,9 +79,14 @@ jobs:
             echo "No model_eval.json generated"
             exit 0
           fi
-          git clone https://oauth2:${DATA_REPO_TOKEN}@github.com/faisaliqbalkhattak/karAQI-data.git /tmp/karAQI-data 2>/dev/null || {
-            echo "DATA_REPO_TOKEN not set or data repo not accessible — skipping push"
-            exit 0
+          if [ -z "$DATA_REPO_TOKEN" ]; then
+            echo "ERROR: DATA_REPO_TOKEN secret is not set. Cannot push to karAQI-data."
+            echo "Set it at: https://github.com/faisaliqbalkhattak/karAQI/settings/secrets/actions"
+            exit 1
+          fi
+          git clone https://oauth2:${DATA_REPO_TOKEN}@github.com/faisaliqbalkhattak/karAQI-data.git /tmp/karAQI-data || {
+            echo "ERROR: Failed to clone karAQI-data repo. Check DATA_REPO_TOKEN permissions."
+            exit 1
           }
           mkdir -p /tmp/karAQI-data/data
           cp data/model_eval.json /tmp/karAQI-data/data/

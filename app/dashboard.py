@@ -346,7 +346,7 @@ def _model_label() -> str:
     if generated:
         try:
             dt = pd.Timestamp(generated)
-            return f"{model} (updated {dt:%d %b %H:%M})"
+            return f"{model} (updated {dt:%d %b %I:%M %p})"
         except Exception:
             pass
     return model
@@ -471,7 +471,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float
     peak24 = float(rows[rows["kind"] == "point"]["value"].max())
     max72 = float(rows["value"].max())
     tiles = [
-        ("Forecast origin", origin.strftime("%m-%d %H:%M"), MUTED, ""),
+        ("Forecast origin", origin.strftime("%m-%d %I:%M %p"), MUTED, ""),
         ("Peak hourly \u00b7 next 24h", f"{peak24:.0f}", MUTED, ""),
         ("Max \u00b7 full 72h", f"{max72:.0f}", MUTED, ""),
         ("Live from Open-Meteo", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
@@ -553,7 +553,7 @@ def render_hourly_strip(rows: pd.DataFrame) -> None:
             <div style="min-width:62px; border-radius:16px; background:{tint(color, .10)};
                  padding:10px 6px; text-align:center; flex:0 0 auto;">
               <div style="font-size:11px; color:{MUTED}; font-weight:600;">+{hour}h</div>
-              <div style="font-size:12px; color:{MUTED};">{row.start_time:%H:%M}</div>
+              <div style="font-size:12px; color:{MUTED};">{row.start_time:%I:%M %p}</div>
               <div style="font-size:21px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
               <div style="font-size:10px; color:{chip_text};">&#9679;</div>
             </div>
@@ -580,7 +580,7 @@ def render_block_means(rows: pd.DataFrame) -> None:
             <div style="flex:1 1 0; min-width:130px; border-radius:16px;
                  background:{tint(color, .10)}; padding:10px 12px; text-align:center;">
               <div style="font-size:11px; color:{MUTED}; font-weight:600;">{label}</div>
-              <div style="font-size:11px; color:{MUTED};">{row.start_time:%d %b %H:%M} \u2192 {row.end_time:%d %b %H:%M}</div>
+              <div style="font-size:11px; color:{MUTED};">{row.start_time:%d %b %I:%M %p} \u2192 {row.end_time:%I:%M %p}</div>
               <div style="font-size:22px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
             </div>
             """)
@@ -605,13 +605,13 @@ def render_prediction_bar_chart(rows: pd.DataFrame) -> None:
     bars = []
     for _, r in points.iterrows():
         bars.append({
-            "label": pd.Timestamp(r["start_time"]).strftime("%d %b %H:%M"),
+            "label": pd.Timestamp(r["start_time"]).strftime("%d %b %I:%M %p"),
             "aqi": float(r["value"]),
             "color": category_color(r.get("category") or aqi_category(r["value"])),
         })
     for _, r in blocks.iterrows():
         bars.append({
-            "label": f"{pd.Timestamp(r['start_time']):%d %b %H:%M}→{pd.Timestamp(r['end_time']):%H:%M}",
+            "label": f"{pd.Timestamp(r['start_time']):%d %b %I:%M %p}→{pd.Timestamp(r['end_time']):%I:%M %p}",
             "aqi": float(r["value"]),
             "color": category_color(r.get("category") or aqi_category(r["value"])),
         })
@@ -668,7 +668,7 @@ def render_main_chart(
         alt.Chart(bands)
         .mark_rect(opacity=0.05)
         .encode(
-            x=alt.X("t0:T", title=None, axis=alt.Axis(format="%d %b %H:%M", grid=False)),
+            x=alt.X("t0:T", title=None, axis=alt.Axis(format="%d %b %I:%M %p", grid=False)),
             x2="t1:T",
             y=alt.Y("lo:Q", title="AQI", scale=y_scale),
             y2="hi:Q",
@@ -677,7 +677,7 @@ def render_main_chart(
     ]
 
     tooltip = [
-        alt.Tooltip("time:T", title="Time", format="%d %b %H:%M"),
+        alt.Tooltip("time:T", title="Time", format="%d %b %I:%M %p"),
         alt.Tooltip("aqi:Q", title="AQI", format=".1f"),
     ]
     if view in ("all", "ours"):
@@ -731,9 +731,9 @@ def comparison_frame(rows: pd.DataFrame, ref_series: pd.Series) -> pd.DataFrame:
     records = []
     for row in rows.itertuples():
         window = (
-            f"{row.start_time:%m-%d %H:%M}"
+            f"{row.start_time:%m-%d %I:%M %p}"
             if row.kind == "point"
-            else f"{row.start_time:%m-%d %H:%M} \u2192 {row.end_time:%m-%d %H:%M}"
+            else f"{row.start_time:%m-%d %I:%M %p} \u2192 {row.end_time:%m-%d %I:%M %p}"
         )
         if row.kind == "point":
             ref_value = ref_series.get(row.start_time, np.nan) if len(ref_series) else np.nan
@@ -791,9 +791,9 @@ def render_output_table(rows: pd.DataFrame) -> None:
     section_header("Full detail", "30-output forecast table")
     table = rows.copy()
     table["window"] = table.apply(
-        lambda r: f"{r.start_time:%m-%d %H:%M}"
+        lambda r: f"{r.start_time:%m-%d %I:%M %p}"
         if r["kind"] == "point"
-        else f"{r.start_time:%m-%d %H:%M} \u2192 {r.end_time:%m-%d %H:%M}",
+        else f"{r.start_time:%m-%d %I:%M %p} \u2192 {r.end_time:%m-%d %I:%M %p}",
         axis=1,
     )
     display = table[["window", "kind", "value", "category"]].rename(
@@ -1152,7 +1152,7 @@ def main() -> None:
             "<div style=\"font-family:'Poppins',sans-serif; font-size:30px; font-weight:700; "
             "color:#241812; letter-spacing:-.03em; margin:6px 0 2px;\">Air quality in Karak</div>"
             f'<div style="font-size:14px; color:{MUTED}; line-height:1.5;">Air quality index (AQI) and PM2.5 air pollution '
-            f"in Karak \u00b7 As of {origin:%d %b %Y, %H:00} \u00b7 Asia/Karachi</div>"
+            f"in Karak \u00b7 As of {origin:%d %b %Y, %I:%M %p} \u00b7 Asia/Karachi</div>"
             f'<div style="font-size:13px; color:{MUTED}; margin-top:10px;">'
             f"Forecast origin \u00b7 {model_label}</div>",
             unsafe_allow_html=True,
@@ -1204,7 +1204,7 @@ def main() -> None:
     st.divider()
     generated = forecast.get("generated_at", "")
     generated_str = (
-        pd.Timestamp(generated).strftime("%d %b %Y, %H:%M") if generated else "\u2014"
+        pd.Timestamp(generated).strftime("%d %b %Y, %I:%M %p") if generated else "\u2014"
     )
     status_html = (
         '<div style="display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:'
