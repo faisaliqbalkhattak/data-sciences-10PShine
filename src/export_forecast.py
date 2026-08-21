@@ -117,32 +117,19 @@ def export_forecast(source: str = "live") -> Path:
     # Current hour AQI from observed data
     current_aqi = _current_aqi_from_data(hourly)
 
-    # IQAir reference: fetch directly so timestamps match the forecast origin.
+    # IQAir reference: read from the stored JSON file (fetched once per day
+    # by iqair_pipeline.yml). No runtime scraping — prevents rate limiting.
     iqair_ref = []
     iqair_now = None
-    try:
-        from src.fetch_iqair import fetch_iqair_hourly
-
-        iqair_ref = fetch_iqair_hourly()
-        if iqair_ref:
-            iqair_now = round(float(iqair_ref[0]["aqi"]), 1)
-    except Exception as exc:
-        logger.warning("IQAir fetch failed: %s", exc)
-        # Fallback: read from the previously stored JSON file.
-        iqair_ref_path = config.PROJECT_ROOT / "data" / "iqair_forecast.json"
-        if iqair_ref_path.exists():
-            try:
-                iqair_ref = json.loads(iqair_ref_path.read_text(encoding="utf-8"))
-                if iqair_ref:
-                    iqair_now = round(float(iqair_ref[0]["aqi"]), 1)
-            except Exception:
-                pass
+    iqair_ref_path = config.PROJECT_ROOT / "data" / "iqair_forecast.json"
+    if iqair_ref_path.exists():
+        try:
+            iqair_ref = json.loads(iqair_ref_path.read_text(encoding="utf-8"))
+            if iqair_ref:
+                iqair_now = round(float(iqair_ref[0]["aqi"]), 1)
+        except Exception as exc:
+            logger.warning("Failed to read stored IQAir data: %s", exc)
     logger.info("IQAir: %d refs, now=%s", len(iqair_ref), iqair_now)
-
-    # Also write the standalone IQAir JSON so other consumers can use it.
-    iqair_path = config.PROJECT_ROOT / "data" / "iqair_forecast.json"
-    if iqair_ref:
-        iqair_path.write_text(json.dumps(iqair_ref, indent=2), encoding="utf-8")
 
     # Build the outputs array
     outputs = []

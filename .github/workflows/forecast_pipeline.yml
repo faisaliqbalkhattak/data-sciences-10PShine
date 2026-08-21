@@ -1,12 +1,12 @@
 name: Forecast pipeline (hourly)
 
-# Generates the pre-computed forecast JSON and fetches IQAir reference data.
+# Generates the pre-computed forecast JSON for the dashboard.
 # Runs every hour at :40 (5 minutes after the feature pipeline at :35).
 # Also triggered after the training pipeline completes.
-# Commits both static_forecast.json and iqair_forecast.json to karAQI-data repo.
+# Commits static_forecast.json to karAQI-data repo.
 #
-# IQAir is fetched directly inside export_forecast.py so both the model
-# forecast and IQAir share the same timestamp and origin — no misalignment.
+# IQAir data is fetched SEPARATELY by iqair_pipeline.yml (once per day).
+# This pipeline reads the stored IQAir data — no scraping at runtime.
 
 on:
   schedule:
@@ -40,7 +40,7 @@ jobs:
       - name: Install forecast pipeline dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-forecast.txt
 
-      - name: Export pre-computed forecast (static JSON + IQAir)
+      - name: Export pre-computed forecast (static JSON)
         run: python -m src.export_forecast --source live
 
       - name: Verify forecast file exists and is valid JSON
@@ -57,7 +57,7 @@ jobs:
               sys.exit(1)
           "
 
-      - name: Push JSONs to karAQI-data repo
+      - name: Push forecast JSON to karAQI-data repo
         env:
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
@@ -67,12 +67,10 @@ jobs:
           }
           mkdir -p /tmp/karAQI-data/data
           cp data/static_forecast.json /tmp/karAQI-data/data/
-          cp data/iqair_forecast.json /tmp/karAQI-data/data/ 2>/dev/null || true
           cd /tmp/karAQI-data
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/static_forecast.json
-          [ -f data/iqair_forecast.json ] && git add data/iqair_forecast.json || true
           if git diff --cached --quiet; then
             echo "No changes to forecast JSON"
           else
