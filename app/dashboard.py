@@ -403,14 +403,14 @@ def render_hero(
     if source == "live" and ref_now is not None:
         badge_aqi = ref_now
         badge_category = aqi_category(ref_now) or our_category
-        badge_label = "US AQI\u202f\u00b7\u202fLive"
+        badge_label = "US AQI\u202f\u00b7\u202fLive from Open-Meteo"
         secondary_line = f"Ours (this hour): {our_current:.0f}" if our_current is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
     else:
         badge_aqi = our_current if our_current is not None else model_next
         badge_category = our_category if our_current is not None else model_next_category
         badge_label = "US AQI\u202f\u00b7\u202fthis hour"
-        secondary_line = f"Live: {ref_now:.0f}" if ref_now is not None else ""
+        secondary_line = f"Live (Open-Meteo): {ref_now:.0f}" if ref_now is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
 
     color = category_color(badge_category)
@@ -474,7 +474,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float
         ("Forecast origin", origin.strftime("%m-%d %H:%M"), MUTED, ""),
         ("Peak hourly \u00b7 next 24h", f"{peak24:.0f}", MUTED, ""),
         ("Max \u00b7 full 72h", f"{max72:.0f}", MUTED, ""),
-        ("Live now", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
+        ("Live from Open-Meteo", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
     ]
     cards = []
     for label, value, accent, note in tiles:
@@ -719,7 +719,7 @@ def render_main_chart(
     swatches = (
         f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
-        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Live AQ forecast (US AQI\u202f\u200a)</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Live from Open-Meteo (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
         "</div>"
     )
@@ -759,7 +759,7 @@ def comparison_frame(rows: pd.DataFrame, ref_series: pd.Series) -> pd.DataFrame:
 
 
 def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
-    section_header("Comparison", "Our model vs live reference")
+    section_header("Comparison", "Our model vs live from Open-Meteo")
     st.markdown(
         f'<div style="font-size:13px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
         "A free, keyless hourly US AQI forecast for Karak -- "
@@ -780,7 +780,7 @@ def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
             "window": "Valid time",
             "kind": "Output",
             "ours": "Our model",
-            "reference": "Live AQ (US AQI\u202f\u200a)",
+            "reference": "Live from Open-Meteo (US AQI\u202f\u200a)",
             "diff_ref": "\u0394 vs ref",
         }
     )
@@ -1091,7 +1091,7 @@ def render_topbar() -> dict:
             source = st.radio(
                 "Data source",
                 options=["store", "live"],
-                format_func=lambda v: "My model" if v == "store" else "Live",
+                format_func=lambda v: "My model" if v == "store" else "Live from Open-Meteo",
                 index=0,
                 horizontal=True,
                 label_visibility="collapsed",
@@ -1170,16 +1170,13 @@ def main() -> None:
     section_header("Hourly forecast", "Next 24 hours, hour by hour")
     render_hourly_strip(rows)
 
-    section_header("30-output forecast", "Full 72-hour prediction bar chart")
-    render_prediction_bar_chart(rows)
-
     view = st.radio(
         "Compare",
         options=["all", "ours", "ref"],
         format_func=lambda v: {
             "all": "All sources",
             "ours": "Our model",
-            "ref": "Live AQ (US AQI\u202f\u200a)",
+            "ref": "Live from Open-Meteo (US AQI\u202f\u200a)",
         }[v],
         index=0,
         horizontal=True,
@@ -1191,7 +1188,6 @@ def main() -> None:
     render_block_means(rows)
 
     render_comparison(rows, ref_series)
-    render_prediction_bar_chart(rows)
 
     with st.expander("Model comparison & evaluation"):
         render_model_history()
