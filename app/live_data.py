@@ -13,7 +13,8 @@ weather columns) so ``inference_hourly.predict_latest`` and the feature
 builders see an identical contract.
 
 Open-Meteo is the project's observation provider (history fetch only). The
-independent forecast reference is IQAir's hourly forecast for Karak.
+independent forecast reference is Open-Meteo's AQ forecast (free, keyless,
+same US EPA AQI scale).
 """
 
 from __future__ import annotations
@@ -40,21 +41,10 @@ from src.ingest import (  # noqa: E402
     fetch_open_meteo_weather_history,
 )
 
-#: IQAir city page for Karak (server-rendered hourly forecast table).
-IQAIR_URL = (
-    "https://www.iqair.com/sg/air-quality/pakistan/khyber-pakhtunkhwa/karak"
-)
-IQAIR_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-}
+#: Open-Meteo AQ forecast endpoint (replaces IQAir scraping).
+AQ_FORECAST_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
-#: IQAir rate-limits aggressively (HTTP 429); cache the parsed table briefly
-#: and re-anchor it to the current hour so refreshes do not hammer the site.
+#: Cache the parsed forecast briefly so dashboard refreshes don't hammer the API.
 IQAIR_CACHE_TTL_SECONDS = 30 * 60
 _iqair_cache: dict = {"ts": None, "series": None}
 
@@ -172,69 +162,47 @@ def current_conditions(hourly: pd.DataFrame) -> dict:
     return out
 
 
-def _fetch_iqair_hourly_table() -> pd.Series:
-    """Fetch and parse IQAir's server-rendered hourly forecast for Karak.
+def _fetch_open_meteo_aq_forecast() -> pd.Series:
+    """Fetch 72h hourly US AQI forecast from Open-Meteo (free, keyless).
 
-    The city page renders its hourly AQI forecast as an HTML table whose first
-    column is ``Now`` (the current hour) followed by 71 labeled hours. The
-    values are IQAir's ``US AQI+`` -- the US EPA AQI scale (same categories,
-    colors and breakpoints as this project's target) computed on hourly
-    averages -- so the line is directly comparable to the model's forecast.
-
-    Returns a ``pd.Series`` of hourly AQI values indexed by local time
-    starting at the current hour (the same origin convention as the model
-    forecast). Retries with backoff on IQAir's aggressive HTTP 429s.
+    Returns a ``pd.Series`` of hourly AQI values indexed by local time.
+    This replaces the IQAir scraping which was rate-limited from CI.
     """
-    import re
-
-    last_error: Optional[Exception] = None
-    for attempt in range(4):
-        try:
-            response = requests.get(IQAIR_URL, headers=IQAIR_HEADERS, timeout=30)
-            if response.status_code == 429:
-                time.sleep(2**attempt * 3)
-                continue
-            response.raise_for_status()
-            html = response.text
-            table_start = html.find("Hourly forecast")
-            if table_start == -1:
-                raise RuntimeError("IQAir page did not include the hourly forecast table.")
-            table_end = html.find("</table>", table_start)
-            if table_end == -1:
-                raise RuntimeError("IQAir hourly forecast table not found.")
-            section = html[table_start:table_end]
-            # The AQI values live inside aqi-bg-* divs with a <p> containing the number.
-            # The HTML has nested divs between the aqi-bg class and the <p>, so use
-            # a dotall match across the intermediate tags.
-            values: list[float] = []
-            for m in re.finditer(r"aqi-bg-[a-z-]+.*?<p[^>]*>\s*(\d+)\s*</p>", section, re.S):
-                values.append(float(m.group(1)))
-            if not values:
-                raise RuntimeError("No AQI values found in the IQAir hourly forecast table.")
-            origin = _current_hour_local()
-            index = pd.date_range(origin, periods=len(values), freq="h")
-            return pd.Series(values, index=index, name="aqi")
-        except Exception as exc:  # noqa: BLE001 - retry transient failures
-            last_error = exc
-            time.sleep(2**attempt * 3)
-    raise RuntimeError(f"IQAir hourly forecast fetch failed: {last_error}")
+    try:
+        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        params = {
+            "latitude": 33.1255,
+            "longitude": 71.5372,
+            "hourly": "us_aqi",
+            "forecast_days": 3,
+            "timezone": "Asia/Karachi",
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        times = data.get("hourly", {}).get("time", [])
+        aqis = data.get("hourly", {}).get("us_aqi", [])
+        values = [float(a) for a in aqis if a is not None]
+        if not values:
+            raise RuntimeError("No AQI values in Open-Meteo response")
+        index = pd.to_datetime(times[:len(values)])
+        return pd.Series(values, index=index, name="aqi")
+    except Exception as exc:
+        raise RuntimeError(f"Open-Meteo AQ forecast fetch failed: {exc}") from exc
 
 
 def iqair_forecast_aqi() -> pd.Series:
-    """IQAir's own hourly AQI forecast for Karak (cached, re-anchored to now).
+    """Reference hourly AQI forecast for Karak (now from Open-Meteo).
 
-    Returns a ``pd.Series`` of hourly AQI values indexed by local time from the
-    current hour. The parsed table is cached for :data:`IQAIR_CACHE_TTL_SECONDS`
-    and re-anchored to the current hour on each call, so the reference line
-    starts from the same origin as the model forecast without hammering IQAir.
+    Returns a ``pd.Series`` of hourly AQI values indexed by local time.
+    Cached for 30 minutes to avoid hammering the API on dashboard refreshes.
     """
-    now = time.time()
+    now_ts = time.time()
     series = _iqair_cache.get("series")
-    if series is None or now - (_iqair_cache.get("ts") or 0) > IQAIR_CACHE_TTL_SECONDS:
-        series = _fetch_iqair_hourly_table()
-        _iqair_cache.update({"ts": now, "series": series})
+    if series is None or now_ts - (_iqair_cache.get("ts") or 0) > IQAIR_CACHE_TTL_SECONDS:
+        series = _fetch_open_meteo_aq_forecast()
+        _iqair_cache.update({"ts": now_ts, "series": series})
         return series
-    # Re-anchor the cached values to the current hour (AQI is persistent, so a
-    # forecast fetched up to 30 min ago still represents the near future well).
+    # Re-anchor the cached values to the current hour.
     origin = _current_hour_local()
     return pd.Series(series.values, index=pd.date_range(origin, periods=len(series), freq="h"), name="aqi")

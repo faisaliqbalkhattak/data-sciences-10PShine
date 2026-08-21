@@ -50,12 +50,11 @@ DATA_REPO = os.environ.get(
     "AQI_DATA_REPO", "https://raw.githubusercontent.com/faisaliqbalkhattak/karAQI-data/main/data"
 )
 FORECAST_URL = f"{DATA_REPO}/static_forecast.json"
-IQAIR_URL = f"{DATA_REPO}/iqair_forecast.json"
 MODEL_EVAL_URL = f"{DATA_REPO}/model_eval.json"
+IMAGES_REPO = "https://raw.githubusercontent.com/faisaliqbalkhattak/karAQI-data/main/images"
 
 # Also support local fallback for development
 FORECAST_PATH = PROJECT_ROOT / "data" / "static_forecast.json"
-IQAIR_PATH = PROJECT_ROOT / "data" / "iqair_forecast.json"
 
 # Semantic palette tailored from the portfolio design: green for environment,
 # orange for warning, red for hazards, blue for information.
@@ -279,17 +278,9 @@ def _load_forecast() -> dict:
     return {}
 
 
-def _load_iqair_forecast() -> list[dict]:
-    """Read the pre-fetched IQAir forecast from remote or local."""
-    data = _fetch_json_remote(IQAIR_URL)
-    if data is not None:
-        return data if isinstance(data, list) else []
-    if IQAIR_PATH.exists():
-        try:
-            return json.loads(IQAIR_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return []
+# IQAir-specific functions removed — reference data now lives inside
+# static_forecast.json under 'ref_forecast' / 'ref_now' keys.
+# The reference source is Open-Meteo AQ forecast (free, keyless, same US AQI scale).
 
 
 def _load_model_eval() -> dict:
@@ -315,34 +306,35 @@ def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame
     rows["end_time"] = pd.to_datetime(rows["end_time"])
     rows["category"] = rows["value"].map(aqi_category)
 
-    iqair_data = forecast.get("iqair_forecast", [])
-    if iqair_data:
-        iqair_series = pd.Series(
-            [item["aqi"] for item in iqair_data],
-            index=pd.to_datetime([item["time"] for item in iqair_data]),
+    ref_data = forecast.get("ref_forecast", [])
+    if ref_data:
+        ref_series = pd.Series(
+            [item["aqi"] for item in ref_data],
+            index=pd.to_datetime([item["time"] for item in ref_data]),
             name="aqi",
         )
     else:
-        iqair_series = pd.Series(dtype=float, name="aqi")
+        ref_series = pd.Series(dtype=float, name="aqi")
 
     current_aqi = forecast.get("current_aqi", {})
-    return origin, rows, iqair_series, current_aqi
+    return origin, rows, ref_series, current_aqi
 
 
-def _iqair_now_from_json() -> float | None:
-    data = _load_iqair_forecast()
-    if data:
-        return round(float(data[0]["aqi"]), 1)
-    return None
+def _ref_now_from_forecast() -> float | None:
+    """Get the reference AQI now value from the forecast JSON."""
+    forecast = _load_forecast_json()
+    return forecast.get("ref_now")
 
 
-def _iqair_series_from_json() -> pd.Series:
-    data = _load_iqair_forecast()
-    if not data:
+def _ref_series_from_forecast() -> pd.Series:
+    """Get the reference AQI series from the forecast JSON."""
+    forecast = _load_forecast_json()
+    ref_data = forecast.get("ref_forecast", [])
+    if not ref_data:
         return pd.Series(dtype=float, name="aqi")
     return pd.Series(
-        [item["aqi"] for item in data],
-        index=pd.to_datetime([item["time"] for item in data]),
+        [item["aqi"] for item in ref_data],
+        index=pd.to_datetime([item["time"] for item in ref_data]),
         name="aqi",
     )
 
@@ -392,13 +384,13 @@ def render_hero(
     source: str,
     rows: pd.DataFrame,
     current_aqi: dict,
-    iqair_now: float | None,
+    ref_now: float | None,
     model_label: str,
 ) -> None:
     """Hero AQI panel per user spec:
 
-    * ``live`` -- primary = IQAir live AQI, secondary = our current-hour AQI
-    * ``store`` -- primary = our current-hour AQI, secondary = IQAir current,
+    * ``live`` -- primary = reference AQI (Open-Meteo), secondary = our current-hour AQI
+    * ``store`` -- primary = our current-hour AQI, secondary = reference current,
       tertiary = our model's next-hour prediction.
     """
     our_current = current_aqi.get("aqi")
@@ -408,17 +400,17 @@ def render_hero(
     model_next = float(first["value"])
     model_next_category = first["category"] or "Good"
 
-    if source == "live" and iqair_now is not None:
-        badge_aqi = iqair_now
-        badge_category = aqi_category(iqair_now) or our_category
-        badge_label = "US AQI\u202f\u00b7\u202fIQAir live"
+    if source == "live" and ref_now is not None:
+        badge_aqi = ref_now
+        badge_category = aqi_category(ref_now) or our_category
+        badge_label = "US AQI\u202f\u00b7\u202fOpen-Meteo live"
         secondary_line = f"Ours (this hour): {our_current:.0f}" if our_current is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
     else:
         badge_aqi = our_current if our_current is not None else model_next
         badge_category = our_category if our_current is not None else model_next_category
         badge_label = "US AQI\u202f\u00b7\u202fthis hour"
-        secondary_line = f"IQAir: {iqair_now:.0f}" if iqair_now is not None else ""
+        secondary_line = f"Open-Meteo: {ref_now:.0f}" if ref_now is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
 
     color = category_color(badge_category)
@@ -475,14 +467,14 @@ def render_hero(
     st.markdown(html, unsafe_allow_html=True)
 
 
-def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, iqair_now: float | None) -> None:
+def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float | None) -> None:
     peak24 = float(rows[rows["kind"] == "point"]["value"].max())
     max72 = float(rows["value"].max())
     tiles = [
         ("Forecast origin", origin.strftime("%m-%d %H:%M"), MUTED, ""),
         ("Peak hourly \u00b7 next 24h", f"{peak24:.0f}", MUTED, ""),
         ("Max \u00b7 full 72h", f"{max72:.0f}", MUTED, ""),
-        ("IQAir now", f"{iqair_now:.0f}" if iqair_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
+        ("Open-Meteo now", f"{ref_now:.0f}" if ref_now is not None else "\u2014", INFO_BLUE_TEXT, "US AQI\u202f\u200a"),
     ]
     cards = []
     for label, value, accent, note in tiles:
@@ -607,7 +599,7 @@ IQAIR_GREEN = "#2e7d32"
 def render_main_chart(
     origin: pd.Timestamp,
     rows: pd.DataFrame,
-    iqair_series: pd.Series,
+    ref_series: pd.Series,
     view: str,
 ) -> None:
     points = rows[rows["kind"] == "point"].copy()
@@ -655,16 +647,16 @@ def render_main_chart(
         )
         layers.extend([model_layer, block_layer])
 
-    if view in ("all", "iqair") and len(iqair_series):
+    if view in ("all", "ref") and len(ref_series):
         try:
-            iq_df = iqair_series.reset_index()
-            iq_df.columns = ["time", "aqi"]
-            iq_layer = (
-                alt.Chart(iq_df)
+            ref_df = ref_series.reset_index()
+            ref_df.columns = ["time", "aqi"]
+            ref_layer = (
+                alt.Chart(ref_df)
                 .mark_line(strokeDash=[4, 3], color=IQAIR_GREEN, strokeWidth=2.2)
                 .encode(x=alt.X("time:T", title=None), y=alt.Y("aqi:Q", title="AQI", scale=y_scale), tooltip=tooltip)
             )
-            layers.append(iq_layer)
+            layers.append(ref_layer)
         except Exception:
             pass
 
@@ -678,15 +670,15 @@ def render_main_chart(
     swatches = (
         f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
-        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> IQAir hourly forecast (US AQI\u202f\u200a)</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Open-Meteo AQ forecast (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
         "</div>"
     )
     st.markdown(swatches, unsafe_allow_html=True)
 
 
-def comparison_frame(rows: pd.DataFrame, iqair_series: pd.Series) -> pd.DataFrame:
-    """Align our 30 outputs with IQAir on the same window."""
+def comparison_frame(rows: pd.DataFrame, ref_series: pd.Series) -> pd.DataFrame:
+    """Align our 30 outputs with the reference on the same window."""
     records = []
     for row in rows.itertuples():
         window = (
@@ -695,52 +687,52 @@ def comparison_frame(rows: pd.DataFrame, iqair_series: pd.Series) -> pd.DataFram
             else f"{row.start_time:%m-%d %H:%M} \u2192 {row.end_time:%m-%d %H:%M}"
         )
         if row.kind == "point":
-            iq_value = iqair_series.get(row.start_time, np.nan) if len(iqair_series) else np.nan
+            ref_value = ref_series.get(row.start_time, np.nan) if len(ref_series) else np.nan
         else:
             try:
-                idx = pd.DatetimeIndex(iqair_series.index)
-                mask_iq = (idx >= row.start_time) & (idx <= row.end_time)
-                iq_block = iqair_series[mask_iq]
-                iq_value = float(iq_block.mean()) if len(iq_block) else np.nan
+                idx = pd.DatetimeIndex(ref_series.index)
+                mask_ref = (idx >= row.start_time) & (idx <= row.end_time)
+                ref_block = ref_series[mask_ref]
+                ref_value = float(ref_block.mean()) if len(ref_block) else np.nan
             except Exception:
-                iq_value = np.nan
+                ref_value = np.nan
         records.append(
             {
                 "window": window,
                 "kind": row.kind.replace("_", " "),
                 "ours": float(row.value),
-                "iqair": iq_value,
+                "reference": ref_value,
             }
         )
     frame = pd.DataFrame(records)
-    frame["diff_iqair"] = frame["ours"] - frame["iqair"]
+    frame["diff_ref"] = frame["ours"] - frame["reference"]
     return frame
 
 
-def render_comparison(rows: pd.DataFrame, iqair_series: pd.Series) -> None:
-    section_header("Comparison", "Our model vs IQAir")
+def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
+    section_header("Comparison", "Our model vs Open-Meteo AQ forecast")
     st.markdown(
         f'<div style="font-size:13px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
-        "IQAir publishes its own hourly forecast for Karak labelled \"US AQI\u202f\u200a\" -- "
+        "Open-Meteo provides a free, keyless hourly US AQI forecast for Karak -- "
         "the same US EPA AQI scale (categories, colors, breakpoints) this project's "
         "target uses, so the two are directly comparable. Mapped onto our exact 30 "
-        "outputs with the same block-mean logic; diff = ours \u2212 IQAir.</div>",
+        "outputs with the same block-mean logic; diff = ours \u2212 reference.</div>",
         unsafe_allow_html=True,
     )
-    frame = comparison_frame(rows, iqair_series)
-    if frame.empty or frame["iqair"].isna().all():
-        st.caption("IQAir reference unavailable right now (the site rate-limits anonymous reads).")
+    frame = comparison_frame(rows, ref_series)
+    if frame.empty or frame["reference"].isna().all():
+        st.caption("Reference data unavailable. The Open-Meteo API may be temporarily unreachable.")
         return
     display = frame.copy()
-    for col in ("ours", "iqair", "diff_iqair"):
+    for col in ("ours", "reference", "diff_ref"):
         display[col] = display[col].round(1)
     display = display.rename(
         columns={
             "window": "Valid time",
             "kind": "Output",
             "ours": "Our model",
-            "iqair": "IQAir (US AQI\u202f\u200a)",
-            "diff_iqair": "\u0394 vs IQAir",
+            "reference": "Open-Meteo AQ (US AQI\u202f\u200a)",
+            "diff_ref": "\u0394 vs ref",
         }
     )
     st.dataframe(display, use_container_width=True, hide_index=True)
@@ -933,8 +925,8 @@ def render_weather_insights() -> None:
     )
 
     img_urls = {
-        "weather_trends": f"{DATA_REPO}/../karak_weather_trends_2000_present.png",
-        "seasonality": f"{DATA_REPO}/../karak_aqi_open_meteo_seasonality.png",
+        "weather_trends": f"{IMAGES_REPO}/karak_weather_trends_2000_present.png",
+        "seasonality": f"{IMAGES_REPO}/karak_aqi_open_meteo_seasonality.png",
     }
     # Fallback to local files
     img_paths = {
@@ -1056,18 +1048,18 @@ def main() -> None:
 
     origin, rows, _, current_aqi = _load_forecast_as_frames(forecast)
 
-    # IQAir data: read from pre-fetched JSON (zero runtime fetches)
-    iqair_series = _iqair_series_from_json()
-    iqair_now = _iqair_now_from_json()
-    if iqair_now is None:
-        iqair_now = forecast.get("iqair_now")
+    # Reference data: read from pre-fetched forecast JSON (zero runtime fetches)
+    ref_series = _ref_series_from_forecast()
+    ref_now = _ref_now_from_forecast()
+    if ref_now is None:
+        ref_now = forecast.get("ref_now")
 
-    # Re-anchor IQAir series to the forecast origin so both lines
+    # Re-anchor reference series to the forecast origin so both lines
     # start at the same time on the chart.
-    if len(iqair_series) and origin is not None:
-        iqair_series = pd.Series(
-            iqair_series.values,
-            index=pd.date_range(origin, periods=len(iqair_series), freq="h"),
+    if len(ref_series) and origin is not None:
+        ref_series = pd.Series(
+            ref_series.values,
+            index=pd.date_range(origin, periods=len(ref_series), freq="h"),
             name="aqi",
         )
 
@@ -1088,9 +1080,9 @@ def main() -> None:
         hero_slot.markdown(HERO_SKELETON, unsafe_allow_html=True)
 
     with hero_slot.container():
-        render_hero(source, rows, current_aqi, iqair_now, model_label)
+        render_hero(source, rows, current_aqi, ref_now, model_label)
 
-    render_metric_cards(origin, rows, iqair_now)
+    render_metric_cards(origin, rows, ref_now)
     render_alerts(rows)
 
     section_header("Hourly forecast", "Next 24 hours, hour by hour")
@@ -1098,22 +1090,22 @@ def main() -> None:
 
     view = st.radio(
         "Compare",
-        options=["all", "ours", "iqair"],
+        options=["all", "ours", "ref"],
         format_func=lambda v: {
             "all": "All sources",
             "ours": "Our model",
-            "iqair": "IQAir (US AQI\u202f\u200a)",
+            "ref": "Open-Meteo AQ (US AQI\u202f\u200a)",
         }[v],
         index=0,
         horizontal=True,
         label_visibility="collapsed",
     )
-    render_main_chart(origin, rows, iqair_series, view)
+    render_main_chart(origin, rows, ref_series, view)
 
     section_header("Extended forecast", "Beyond 24 hours \u2014 six- and twelve-hour means")
     render_block_means(rows)
 
-    render_comparison(rows, iqair_series)
+    render_comparison(rows, ref_series)
     render_output_table(rows)
 
     with st.expander("Model comparison & evaluation"):
@@ -1142,7 +1134,7 @@ def main() -> None:
         "<span>Model: <b>"
         + forecast.get("model", "aqi-hourly-ridge")
         + "</b></span>"
-        "<span>Reference: IQAir (US AQI\u202f\u200a)</span>"
+        "<span>Reference: Open-Meteo AQ (US AQI\u202f\u200a)</span>"
         "</div>"
         '<div style="font-size:11px; color:'
         + MUTED
@@ -1158,19 +1150,17 @@ def main() -> None:
         st.json({
             "data_source": DATA_REPO,
             "forecast_url": FORECAST_URL,
-            "iqair_url": IQAIR_URL,
             "model_eval_url": MODEL_EVAL_URL,
             "generated_at": forecast.get("generated_at"),
             "source": forecast.get("source"),
             "model": forecast.get("model"),
             "outputs_count": len(forecast.get("outputs", [])),
-            "iqair_from_json_count": len(_load_iqair_forecast()),
-            "iqair_from_forecast_count": len(forecast.get("iqair_forecast", [])),
-            "iqair_now": iqair_now,
+            "ref_forecast_count": len(forecast.get("ref_forecast", [])),
+            "ref_now": ref_now,
             "current_aqi": current_aqi,
             "origin": str(origin),
             "rows_count": len(rows),
-            "iqair_series_len": len(iqair_series),
+            "ref_series_len": len(ref_series),
         })
 
 

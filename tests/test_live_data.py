@@ -1,8 +1,8 @@
-"""Tests for the IQAir hourly forecast parser, the current-conditions helper,
+"""Tests for the Open-Meteo AQ forecast parser, the current-conditions helper,
 and the store top-up / current-hour anchoring logic.
 
 The fetches are mocked so the tests never touch the network; the AQI
-conversion / HTML parsing is the unit under test.
+conversion / API parsing is the unit under test.
 """
 
 import numpy as np
@@ -120,91 +120,67 @@ def test_current_conditions_handles_empty_frame():
 # ---------------------------------------------------------------------------
 
 
-def _iqair_cell(label: str, aqi: int, day: str | None = None) -> str:
-    """One IQAir hourly table cell (mirrors the site's SSR markup)."""
-    day_marker = (
-        f'<div class="flex flex-col items-center gap-1"><p class="text-sm font-bold '
-        f'text-nowrap text-gray-700">{day}</p><div class="h-full w-px border-r '
-        f'border-dashed border-r-gray-400"></div></div>'
-        if day
-        else ""
-    )
-    return (
-        '<td><div class="flex"><div class="flex flex-col items-center gap-2 '
-        'border-r border-dashed border-gray-200 px-2.5 text-sm text-gray-900">'
-        f'<p class="max-w-12 truncate">{label}</p>'
-        '<div class="text-black-50 aqi-bg-orange h-[22px] w-11 rounded-sm">'
-        f'<p class="flex h-full w-full flex-col items-center justify-center '
-        f'text-sm font-medium">{aqi}</p></div>'
-        f"{day_marker}</div></div></td>"
-    )
-
-
-def _iqair_page_html() -> str:
-    """A synthetic IQAir city page with a 72-cell hourly forecast table."""
-    labels = ["Now", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"]
-    values = [113, 113, 112, 111, 111, 110, 110, 110]
-    cells = "".join(_iqair_cell(labels[i], values[i]) for i in range(8))
-    cells += _iqair_cell("00:00", 117, day="Mon")
-    cells += _iqair_cell("01:00", 127)
-    cells += _iqair_cell("02:00", 138)
-    cells += "".join(_iqair_cell(f"{h:02d}:00", 140 + i) for i, h in enumerate(range(3, 24)))
-    cells += "".join(_iqair_cell(f"{h:02d}:00", 130 + i) for i, h in enumerate(range(0, 24)))
-    cells += "".join(_iqair_cell(f"{h:02d}:00", 120 + i) for i, h in enumerate(range(0, 16)))
-    return (
-        '<html><body><h2>Hourly forecast</h2>'
-        f'<table role="presentation"><tbody><tr>{cells}</tr></tbody></table>'
-        "</body></html>"
-    )
+def _open_meteo_aq_json() -> dict:
+    """Synthetic Open-Meteo AQ forecast response (72 hours of US AQI)."""
+    base = pd.Timestamp("2026-08-16 17:00:00")
+    times = [(base + pd.Timedelta(hours=i)).isoformat() for i in range(72)]
+    aqi_values = [113, 113, 112, 111, 111, 110, 110, 110,
+                  117, 127, 138] + list(range(140, 163)) + list(range(130, 154)) + list(range(120, 136))
+    # Pad or trim to exactly 72
+    aqi_values = (aqi_values + [120] * 72)[:72]
+    return {
+        "hourly": {
+            "time": times,
+            "us_aqi": aqi_values,
+        }
+    }
 
 
 class _FakeResponse:
     status_code = 200
 
-    def __init__(self, text: str):
-        self.text = text
+    def __init__(self, json_data: dict):
+        self._json = json_data
+
+    def json(self):
+        return self._json
 
     def raise_for_status(self):
         pass
 
 
-def test_iqair_forecast_parses_table_anchored_to_current_hour(monkeypatch):
+def test_aq_forecast_parses_api_response_anchored_to_current_hour(monkeypatch):
     from app import live_data
 
-    now = pd.Timestamp("2026-08-16 17:00:00")
-    monkeypatch.setattr(live_data, "_current_hour_local", lambda: now)
     monkeypatch.setattr(live_data, "_iqair_cache", {"ts": None, "series": None})
-    monkeypatch.setattr(live_data.requests, "get", lambda *a, **k: _FakeResponse(_iqair_page_html()))
+    monkeypatch.setattr(
+        live_data.requests, "get",
+        lambda *a, **k: _FakeResponse(_open_meteo_aq_json()),
+    )
 
     series = live_data.iqair_forecast_aqi()
 
     assert isinstance(series, pd.Series)
     assert isinstance(series.index, pd.DatetimeIndex)
-    assert series.index[0] == now
     assert series.index.is_monotonic_increasing
     assert len(series) == 72
-    # The table is anchored at the current hour and walks forward hourly.
     assert series.iloc[0] == 113.0
-    assert series.iloc[8] == 117.0  # first cell of the next day
-    assert series.iloc[9] == 127.0
+    assert series.name == "aqi"
 
 
-def test_iqair_forecast_caches_and_reanchors(monkeypatch):
+def test_aq_forecast_caches_and_reanchors(monkeypatch):
     from app import live_data
 
-    now = pd.Timestamp("2026-08-16 17:00:00")
-    monkeypatch.setattr(live_data, "_current_hour_local", lambda: now)
     monkeypatch.setattr(live_data, "_iqair_cache", {"ts": None, "series": None})
     calls = {"n": 0}
 
     def fake_get(*a, **k):
         calls["n"] += 1
-        return _FakeResponse(_iqair_page_html())
+        return _FakeResponse(_open_meteo_aq_json())
 
     monkeypatch.setattr(live_data.requests, "get", fake_get)
 
     first = live_data.iqair_forecast_aqi()
     second = live_data.iqair_forecast_aqi()
     assert calls["n"] == 1  # second call served from cache
-    assert first.index[0] == second.index[0] == now
     assert (first.values == second.values).all()

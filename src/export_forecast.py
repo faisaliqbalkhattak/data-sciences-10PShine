@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests as _requests
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -36,6 +37,35 @@ logger = logging.getLogger(__name__)
 
 #: Where the dashboard reads the pre-computed forecast.
 FORECAST_PATH = config.PROJECT_ROOT / "data" / "static_forecast.json"
+
+
+def _fetch_open_meteo_aq_forecast() -> list[dict]:
+    """Fetch 72h hourly US AQI forecast from Open-Meteo (free, keyless).
+
+    Returns a list of dicts with 'time' and 'aqi' keys.
+    """
+    try:
+        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        params = {
+            "latitude": 33.1255,
+            "longitude": 71.5372,
+            "hourly": "us_aqi",
+            "forecast_days": 3,
+            "timezone": "Asia/Karachi",
+        }
+        resp = _requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        times = data.get("hourly", {}).get("time", [])
+        aqis = data.get("hourly", {}).get("us_aqi", [])
+        result = []
+        for t, a in zip(times, aqis):
+            if a is not None:
+                result.append({"time": t, "aqi": round(float(a), 1)})
+        return result
+    except Exception as exc:
+        logger.warning("Open-Meteo AQ forecast fetch failed: %s", exc)
+        return []
 
 
 def _current_hour_local() -> pd.Timestamp:
@@ -117,19 +147,10 @@ def export_forecast(source: str = "live") -> Path:
     # Current hour AQI from observed data
     current_aqi = _current_aqi_from_data(hourly)
 
-    # IQAir reference: read from the stored JSON file (fetched once per day
-    # by iqair_pipeline.yml). No runtime scraping — prevents rate limiting.
-    iqair_ref = []
-    iqair_now = None
-    iqair_ref_path = config.PROJECT_ROOT / "data" / "iqair_forecast.json"
-    if iqair_ref_path.exists():
-        try:
-            iqair_ref = json.loads(iqair_ref_path.read_text(encoding="utf-8"))
-            if iqair_ref:
-                iqair_now = round(float(iqair_ref[0]["aqi"]), 1)
-        except Exception as exc:
-            logger.warning("Failed to read stored IQAir data: %s", exc)
-    logger.info("IQAir: %d refs, now=%s", len(iqair_ref), iqair_now)
+    # Open-Meteo AQ forecast reference: 72h of hourly US AQI, free & keyless.
+    # This replaces IQAir which rate-limits CI runner IPs aggressively.
+    ref_data = _fetch_open_meteo_aq_forecast()
+    logger.info("Open-Meteo AQ ref: %d values", len(ref_data))
 
     # Build the outputs array
     outputs = []
@@ -149,14 +170,14 @@ def export_forecast(source: str = "live") -> Path:
         "origin": origin.isoformat(),
         "model": "aqi-hourly-ridge",
         "current_aqi": current_aqi,
-        "iqair_now": iqair_now,
+        "ref_now": ref_data[0]["aqi"] if ref_data else None,
         "outputs": outputs,
-        "iqair_forecast": iqair_ref,
+        "ref_forecast": ref_data,
     }
 
     FORECAST_PATH.parent.mkdir(parents=True, exist_ok=True)
     FORECAST_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    logger.info("Forecast written to %s (%d outputs, %d IQAir refs)", FORECAST_PATH, len(outputs), len(iqair_ref))
+    logger.info("Forecast written to %s (%d outputs, %d ref refs)", FORECAST_PATH, len(outputs), len(ref_data))
     return FORECAST_PATH
 
 

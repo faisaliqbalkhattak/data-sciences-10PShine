@@ -30,7 +30,6 @@ class TestExportForecast:
 
         with (
             patch("app.live_data.load_latest_hourly", return_value=mock_hourly),
-            patch("app.live_data.iqair_forecast_aqi", return_value=pd.Series(dtype=float)),
         ):
             # Import and monkeypatch the internal function
             import src.export_forecast as ef
@@ -96,7 +95,7 @@ class TestIQAirScraping:
 
         assert values == [143.0, 142.0], f"Expected [143, 142], got {values}"
 
-    def test_iqair_forecast_returns_series(self) -> None:
+    def test_aq_forecast_returns_series(self) -> None:
         """iqair_forecast_aqi should return a pd.Series (or raise on network failure)."""
         from app.live_data import iqair_forecast_aqi
 
@@ -107,18 +106,18 @@ class TestIQAirScraping:
                 assert series.index.dtype == "datetime64[ns]"
                 assert series.name == "aqi"
         except RuntimeError:
-            # Network failure is acceptable in CI (IQAir rate-limits)
+            # Network failure is acceptable in CI
             pytest.skip("IQAir unavailable (rate-limited or no network)")
 
-    def test_forecast_json_has_iqair_refs(self) -> None:
-        """The static forecast JSON should contain IQAir reference data."""
+    def test_forecast_json_has_ref_data(self) -> None:
+        """The static forecast JSON should contain Open-Meteo reference data."""
         from src import config
 
         forecast_path = config.PROJECT_ROOT / "data" / "static_forecast.json"
         if not forecast_path.exists():
             pytest.skip("No static forecast file")
         data = json.loads(forecast_path.read_text())
-        iqair = data.get("iqair_forecast", [])
-        # IQAir may be empty if rate-limited during export, but the key must exist
-        assert "iqair_forecast" in data, "Missing 'iqair_forecast' key in forecast JSON"
-        assert isinstance(iqair, list), "iqair_forecast must be a list"
+        ref = data.get("ref_forecast", [])
+        # Reference data may be empty if API failed, but the key must exist
+        assert "ref_forecast" in data, "Missing 'ref_forecast' key in forecast JSON"
+        assert isinstance(ref, list), "ref_forecast must be a list"
