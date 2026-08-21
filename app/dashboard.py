@@ -1,12 +1,9 @@
 """Streamlit dashboard for the Karak AQI Predictor -- Google Material / IQAir style.
 
 Architecture: predictions are pre-computed by the CI pipelines (feature pipeline
-hourly, training pipeline daily) and stored as ``data/static_forecast.json``.
-The dashboard reads this JSON file and renders a static page for every visitor,
-giving near-instant response times without runtime inference.
-
-The only real-time fetch is IQAir's live AQI reading for the hero widget,
-which is cached for 5 minutes.
+hourly, training pipeline daily) and stored in the karAQI-data repo as static
+JSON files.  The dashboard fetches these via GitHub raw URLs, giving every
+visitor a near-instant page load with zero runtime inference.
 
 Run from ``development``::
 
@@ -15,6 +12,7 @@ Run from ``development``::
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -33,6 +31,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 import altair as alt  # noqa: E402
+import requests as _requests  # noqa: E402
 
 from src import config  # noqa: E402
 from src.aqi import aqi_category  # noqa: E402
@@ -44,9 +43,19 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ---------------------------------------------------------------------------
+# Data source: karAQI-data repo (static JSON files)
+# ---------------------------------------------------------------------------
+DATA_REPO = os.environ.get(
+    "AQI_DATA_REPO", "https://raw.githubusercontent.com/faisaliqbalkhattak/karAQI-data/main/data"
+)
+FORECAST_URL = f"{DATA_REPO}/static_forecast.json"
+IQAIR_URL = f"{DATA_REPO}/iqair_forecast.json"
+MODEL_EVAL_URL = f"{DATA_REPO}/model_eval.json"
+
+# Also support local fallback for development
 FORECAST_PATH = PROJECT_ROOT / "data" / "static_forecast.json"
 IQAIR_PATH = PROJECT_ROOT / "data" / "iqair_forecast.json"
-API_URL = os.environ.get("AQI_API_URL", "http://127.0.0.1:8000")
 
 # Semantic palette tailored from the portfolio design: green for environment,
 # orange for warning, red for hazards, blue for information.
@@ -67,7 +76,7 @@ ORANGE_700 = "#c84f1b"
 KICKER = "#a83c10"
 INFO_BLUE = "#4a7dd6"
 INFO_BLUE_TEXT = "#1a56c9"
-DISPLAY_FONT = "'Space Grotesk',sans-serif"
+DISPLAY_FONT = "'Poppins', 'Inter', sans-serif"
 
 BAND_BOUNDS = [
     (0, 50, "Good"),
@@ -80,9 +89,9 @@ BAND_BOUNDS = [
 
 APP_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
 html, body, [class*="css"] {
-    font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 .stApp {
     background: #f6eee7;
@@ -92,7 +101,7 @@ html, body, [class*="css"] {
 .main .block-container { padding-left: 2.5rem; padding-right: 2.5rem; }
 h1, h2, h3 {
     color: #241812; font-weight: 700; letter-spacing: -0.02em;
-    font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+    font-family: 'Poppins', 'Inter', sans-serif;
 }
 section[data-testid="stSidebar"] { display: none; }
 header[data-testid="stHeader"] {
@@ -134,12 +143,12 @@ div[data-testid="stMetricLabel"] p {
 }
 div[data-testid="stMetricValue"] {
     color: #241812; font-size: 26px; font-weight: 700;
-    font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+    font-family: 'Poppins', 'Inter', sans-serif;
 }
 div[data-testid="stMetricDelta"] { font-size: 12px; font-weight: 600; }
 div[data-testid="stExpander"] { margin-top: 12px; }
 div[data-testid="stExpander"] summary {
-    font-weight: 700; color: #241812; font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+    font-weight: 700; color: #241812; font-family: 'Poppins', 'Inter', sans-serif;
 }
 div[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
 div[data-testid="stCaptionContainer"] p { color: #5c4a3f !important; }
@@ -203,7 +212,6 @@ hr { border-color: #eadbd0; }
     div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 12px !important; }
     div[data-testid="stMetric"] { padding: 10px 12px !important; }
     div[data-testid="stMetricValue"] { font-size: 20px !important; }
-    /* Compact header on mobile */
     .main .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
 }
 </style>
@@ -248,21 +256,62 @@ def is_light(hex_color: str) -> bool:
 
 
 # --------------------------------------------------------------------------
-# Load pre-computed forecast
+# Data loading: fetch from karAQI-data repo (with local fallback)
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=300, show_spinner=False)
+def _fetch_json_remote(url: str) -> dict | list | None:
+    """Fetch JSON from a URL with a 10s timeout."""
+    try:
+        resp = _requests.get(url, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return None
+
+
 def _load_forecast() -> dict:
-    """Read the pre-computed forecast JSON generated by the CI pipeline."""
-    if not FORECAST_PATH.exists():
-        return {}
-    return json.loads(FORECAST_PATH.read_text(encoding="utf-8"))
+    """Read the pre-computed forecast — try remote first, then local fallback."""
+    data = _fetch_json_remote(FORECAST_URL)
+    if data is not None:
+        return data if isinstance(data, dict) else {}
+    # Local fallback (development)
+    if FORECAST_PATH.exists():
+        try:
+            return json.loads(FORECAST_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _load_iqair_forecast() -> list[dict]:
+    """Read the pre-fetched IQAir forecast from remote or local."""
+    data = _fetch_json_remote(IQAIR_URL)
+    if data is not None:
+        return data if isinstance(data, list) else []
+    if IQAIR_PATH.exists():
+        try:
+            return json.loads(IQAIR_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return []
+
+
+def _load_model_eval() -> dict:
+    """Read the pre-computed model evaluation from remote or local."""
+    data = _fetch_json_remote(MODEL_EVAL_URL)
+    if data is not None:
+        return data if isinstance(data, dict) else {}
+    eval_path = PROJECT_ROOT / "data" / "model_eval.json"
+    if eval_path.exists():
+        try:
+            return json.loads(eval_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame, pd.Series, dict]:
-    """Convert the raw forecast dict into the frames the dashboard needs.
-
-    Returns (origin, rows, iqair_series, current_aqi_dict).
-    """
+    """Convert the raw forecast dict into the frames the dashboard needs."""
     origin = pd.Timestamp(forecast["origin"])
     outputs = forecast["outputs"]
     rows = pd.DataFrame(outputs)
@@ -270,7 +319,6 @@ def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame
     rows["end_time"] = pd.to_datetime(rows["end_time"])
     rows["category"] = rows["value"].map(aqi_category)
 
-    # IQAir reference series
     iqair_data = forecast.get("iqair_forecast", [])
     if iqair_data:
         iqair_series = pd.Series(
@@ -285,23 +333,7 @@ def _load_forecast_as_frames(forecast: dict) -> tuple[pd.Timestamp, pd.DataFrame
     return origin, rows, iqair_series, current_aqi
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _load_iqair_forecast() -> list[dict]:
-    """Read the pre-fetched IQAir forecast from the stored JSON file.
-
-    The IQAir fetch workflow (iqair_pipeline.yml) stores data in
-    data/iqair_forecast.json so we never scrape at runtime.
-    """
-    if not IQAIR_PATH.exists():
-        return []
-    try:
-        return json.loads(IQAIR_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
-
 def _iqair_now_from_json() -> float | None:
-    """Get IQAir's current AQI from the pre-fetched JSON file."""
     data = _load_iqair_forecast()
     if data:
         return round(float(data[0]["aqi"]), 1)
@@ -309,7 +341,6 @@ def _iqair_now_from_json() -> float | None:
 
 
 def _iqair_series_from_json() -> pd.Series:
-    """Get IQAir's hourly forecast as a Series from the pre-fetched JSON."""
     data = _load_iqair_forecast()
     if not data:
         return pd.Series(dtype=float, name="aqi")
@@ -371,28 +402,23 @@ def render_hero(
     """Hero AQI panel per user spec:
 
     * ``live`` -- primary = IQAir live AQI, secondary = our current-hour AQI
-      (calculated from observed data using US EPA formula).
-    * ``store`` -- primary = our current-hour AQI, secondary = IQAir current
-      value, tertiary = our model's next-hour prediction.
+    * ``store`` -- primary = our current-hour AQI, secondary = IQAir current,
+      tertiary = our model's next-hour prediction.
     """
-    # Our current-hour AQI from observed data
     our_current = current_aqi.get("aqi")
     our_category = current_aqi.get("category") or "Good"
 
-    # Model's next-hour prediction
     first = rows.iloc[0]
     model_next = float(first["value"])
     model_next_category = first["category"] or "Good"
 
     if source == "live" and iqair_now is not None:
-        # Live tab: IQAir is primary
         badge_aqi = iqair_now
         badge_category = aqi_category(iqair_now) or our_category
         badge_label = "US AQI\u202f\u00b7\u202fIQAir live"
         secondary_line = f"Ours (this hour): {our_current:.0f}" if our_current is not None else ""
         tertiary_line = f"Ours (next hour): {model_next:.0f}"
     else:
-        # Store tab: our current-hour is primary
         badge_aqi = our_current if our_current is not None else model_next
         badge_category = our_category if our_current is not None else model_next_category
         badge_label = "US AQI\u202f\u00b7\u202fthis hour"
@@ -412,12 +438,12 @@ def render_hero(
     lines_html = ""
     if secondary_line:
         lines_html += (
-            f'<div style="font-size:12px; margin-top:8px; opacity:.92; font-weight:600;">'
+            f'<div style="font-size:13px; margin-top:8px; opacity:.92; font-weight:600;">'
             f"{secondary_line}</div>"
         )
     if tertiary_line:
         lines_html += (
-            f'<div style="font-size:11px; margin-top:4px; opacity:.80; font-weight:500;">'
+            f'<div style="font-size:12px; margin-top:4px; opacity:.80; font-weight:500;">'
             f"{tertiary_line}</div>"
         )
 
@@ -432,7 +458,7 @@ def render_hero(
               <div style="background:rgba(25,16,10,.82); border-radius:14px; padding:14px 24px; min-width:160px;
                    text-align:center; color:#fff;">
                 <div style="font-size:52px; font-weight:700; line-height:1; letter-spacing:-.03em;
-                     font-family:'Space Grotesk', sans-serif;">{badge_aqi:.0f}</div>
+                     font-family:'Poppins', sans-serif;">{badge_aqi:.0f}</div>
                 <div style="font-size:11px; letter-spacing:.06em; opacity:.85; margin-top:4px; font-weight:600;">{badge_label}</div>
               </div>
               <div style="color:{text_color}; padding-top:4px;">{WORRIED_FACE_SVG}</div>
@@ -746,24 +772,12 @@ def render_output_table(rows: pd.DataFrame) -> None:
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-def _load_model_eval() -> dict:
-    """Read the pre-computed model evaluation JSON generated by the training pipeline."""
-    eval_path = PROJECT_ROOT / "data" / "model_eval.json"
-    if not eval_path.exists():
-        return {}
-    try:
-        return json.loads(eval_path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
 def render_model_history() -> None:
     eval_data = _load_model_eval()
     if not eval_data:
         st.info("Model evaluation data not available. Wait for the training pipeline to run.")
         return
 
-    # Registry
     registry = eval_data.get("registry", [])
     if registry:
         st.subheader("Model registry (MLflow)")
@@ -887,7 +901,6 @@ def render_shap() -> None:
         st.caption("No SHAP features available.")
         return
 
-    # Build a horizontal bar chart of SHAP values
     df = pd.DataFrame(features)
     df["color"] = df["shap"].apply(lambda v: ORANGE_700 if v > 0 else INFO_BLUE)
     df = df.sort_values("shap", key=abs, ascending=True)
@@ -903,7 +916,6 @@ def render_shap() -> None:
     fig.tight_layout()
     st.pyplot(fig)
 
-    # Feature values table
     table = pd.DataFrame(features)[["feature", "value", "shap"]].copy()
     table["value"] = table["value"].round(3)
     table["shap"] = table["shap"].round(2)
@@ -911,11 +923,84 @@ def render_shap() -> None:
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
+def render_weather_insights() -> None:
+    """Display weather trend and seasonality images from the repo."""
+    section_header("Weather insights", "Karak weather trends and AQI seasonality")
+
+    st.markdown(
+        f'<div style="font-size:14px; color:{MUTED}; margin-bottom:12px; line-height:1.6;">'
+        "Long-term weather patterns in Karak influence air quality. These charts show "
+        "temperature and precipitation trends from 2000 to present, and how AQI varies "
+        "by season and time of day. Dust events (common in March\u2013June) and winter "
+        "inversions (December\u2013February) are the primary drivers of poor air quality.</div>",
+        unsafe_allow_html=True,
+    )
+
+    img_urls = {
+        "weather_trends": f"{DATA_REPO}/../karak_weather_trends_2000_present.png",
+        "seasonality": f"{DATA_REPO}/../karak_aqi_open_meteo_seasonality.png",
+    }
+    # Fallback to local files
+    img_paths = {
+        "weather_trends": PROJECT_ROOT / "data" / "processed" / "karak_weather_trends_2000_present.png",
+        "seasonality": PROJECT_ROOT / "data" / "processed" / "karak_aqi_open_meteo_seasonality.png",
+    }
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Temperature & precipitation trends")
+        st.markdown(
+            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:8px;">'
+            "Karak\u2019s climate shows hot summers (40\u2009\u00b0C+) and mild winters. "
+            "Precipitation is concentrated in the monsoon (July\u2013September). "
+            "Dust storms during the dry pre-monsoon period (March\u2013June) "
+            "correlate with PM10 spikes.</div>",
+            unsafe_allow_html=True,
+        )
+        img_bytes = None
+        try:
+            resp = _requests.get(img_urls["weather_trends"], timeout=10)
+            if resp.ok:
+                img_bytes = io.BytesIO(resp.content)
+        except Exception:
+            pass
+        if img_bytes is None and img_paths["weather_trends"].exists():
+            img_bytes = io.BytesIO(img_paths["weather_trends"].read_bytes())
+        if img_bytes is not None:
+            st.image(img_bytes, use_container_width=True)
+        else:
+            st.info("Weather trends image not available yet.")
+
+    with col2:
+        st.subheader("AQI seasonality pattern")
+        st.markdown(
+            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:8px;">'
+            "Monthly and hourly AQI patterns reveal when air quality is worst. "
+            "Summer months (May\u2013August) show higher PM2.5 due to dust and biomass burning. "
+            "Nighttime inversions trap pollutants, leading to AQI peaks between 6\u201310 AM.</div>",
+            unsafe_allow_html=True,
+        )
+        img_bytes = None
+        try:
+            resp = _requests.get(img_urls["seasonality"], timeout=10)
+            if resp.ok:
+                img_bytes = io.BytesIO(resp.content)
+        except Exception:
+            pass
+        if img_bytes is None and img_paths["seasonality"].exists():
+            img_bytes = io.BytesIO(img_paths["seasonality"].read_bytes())
+        if img_bytes is not None:
+            st.image(img_bytes, use_container_width=True)
+        else:
+            st.info("Seasonality image not available yet.")
+
+
 def section_header(kicker: str, title: str) -> None:
     st.markdown(
         f'<div style="font-size:11px; letter-spacing:.18em; text-transform:uppercase; '
         f'color:{KICKER}; font-weight:700; margin-top:28px;">{kicker}</div>'
-        f"<div style=\"font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; "
+        f"<div style=\"font-family:'Poppins',sans-serif; font-size:20px; font-weight:700; "
         f"color:#241812; letter-spacing:-.03em; margin:3px 0 12px;\">{title}</div>",
         unsafe_allow_html=True,
     )
@@ -928,7 +1013,7 @@ def render_topbar() -> dict:
         )
         with col_brand:
             st.markdown(
-                f"<div style=\"font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; "
+                f"<div style=\"font-family:'Poppins',sans-serif; font-size:20px; font-weight:700; "
                 f"letter-spacing:-.04em; background:linear-gradient(120deg,#8f2f12,#f47a32); "
                 f"-webkit-background-clip:text; background-clip:text; color:transparent;\">"
                 f"Karak AQI</div>"
@@ -978,7 +1063,6 @@ def main() -> None:
     # IQAir data: read from pre-fetched JSON (zero runtime fetches)
     iqair_series = _iqair_series_from_json()
     iqair_now = _iqair_now_from_json()
-    # Fallback to the value stored in the forecast JSON
     if iqair_now is None:
         iqair_now = forecast.get("iqair_now")
 
@@ -995,11 +1079,11 @@ def main() -> None:
     left_col, right_col = st.columns([1.0, 0.9], gap="medium")
     with left_col:
         st.markdown(
-            "<div style=\"font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; "
+            "<div style=\"font-family:'Poppins',sans-serif; font-size:30px; font-weight:700; "
             "color:#241812; letter-spacing:-.03em; margin:6px 0 2px;\">Air quality in Karak</div>"
-            f'<div style="font-size:13px; color:{MUTED};">Air quality index (AQI) and PM2.5 air pollution '
-            f'in Karak \u00b7 As of {origin:%d %b %Y, %H:00} \u00b7 Asia/Karachi</div>'
-            f'<div style="font-size:12px; color:{MUTED}; margin-top:10px;">'
+            f'<div style="font-size:14px; color:{MUTED}; line-height:1.5;">Air quality index (AQI) and PM2.5 air pollution '
+            f"in Karak \u00b7 As of {origin:%d %b %Y, %H:00} \u00b7 Asia/Karachi</div>"
+            f'<div style="font-size:13px; color:{MUTED}; margin-top:10px;">'
             f"Forecast origin \u00b7 {model_label}</div>",
             unsafe_allow_html=True,
         )
@@ -1045,6 +1129,8 @@ def main() -> None:
     with st.expander("History / EDA"):
         render_eda()
 
+    render_weather_insights()
+
     st.divider()
     generated = forecast.get("generated_at", "")
     generated_str = (
@@ -1065,19 +1151,19 @@ def main() -> None:
         '<div style="font-size:11px; color:'
         + MUTED
         + '; margin-top:4px;">'
-        "Pre-computed forecasts served statically. "
-        "Auto-updates via GitHub Actions: feature pipeline (hourly) + training pipeline (daily 01:15 UTC)."
+        "Pre-computed forecasts served statically from karAQI-data. "
+        "Auto-updates via GitHub Actions: feature pipeline (hourly) + training pipeline (daily 00:30 UTC)."
         "</div>"
     )
     st.markdown(status_html, unsafe_allow_html=True)
 
-    # Debug panel: shows data state for troubleshooting
+    # Debug panel
     with st.expander("Debug info", expanded=False):
         st.json({
-            "forecast_file": str(FORECAST_PATH),
-            "forecast_exists": FORECAST_PATH.exists(),
-            "iqair_file": str(IQAIR_PATH),
-            "iqair_file_exists": IQAIR_PATH.exists(),
+            "data_source": DATA_REPO,
+            "forecast_url": FORECAST_URL,
+            "iqair_url": IQAIR_URL,
+            "model_eval_url": MODEL_EVAL_URL,
             "generated_at": forecast.get("generated_at"),
             "source": forecast.get("source"),
             "model": forecast.get("model"),

@@ -1,16 +1,12 @@
 name: Feature pipeline (hourly)
 
-# Runs the feature pipeline every hour per the assignment ("feature pipeline
-# runs every hour automatically"), plus on every push/PR as the project CI.
-# No secrets are required: Open-Meteo is a keyless public API and the feature
-# store is a local DuckDB file uploaded as a workflow artifact.
-#
-# After fetching data and building features, this pipeline also runs inference
-# and commits the pre-computed forecast JSON to the repo so the dashboard
-# serves a static page with near-instant response time.
+# Fetches Open-Meteo data, builds features, and runs tests.
+# Runs hourly at :35 (35 minutes after the hour) to allow the training
+# pipeline (daily 00:30 UTC) to finish before hourly updates resume.
+# Data artifacts are committed to the karAQI-data repo, not karAQI.
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "35 * * * *"
   workflow_dispatch:
   push:
   pull_request:

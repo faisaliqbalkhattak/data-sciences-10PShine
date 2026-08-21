@@ -144,3 +144,58 @@ i fixed that by telling ith teh time zone
 - The weak correlation is not caused by timestamp offsets.
 - For live comparisons, still watch the OpenWeather forecast offset (it was +60 min from 6 PM PKT in this run).
 
+---
+
+# 2026-08-21 — Architecture: Static JSON Serving + Data Repo Split
+
+**Motivation**: CI commits (hourly forecast JSON, IQAir data, model eval) were
+cluttering the main repo commit history. The data repo `karAQI-data` was
+created to hold all CI-generated files, keeping the main `karAQI` repo clean.
+
+## Problem solved
+
+- Hourly CI commits to the main repo would make it impossible to see real code
+  changes among hundreds of `ci: refresh forecast JSON` commits.
+- Streamlit Cloud reads from the main repo, so it needed a way to access data
+  from a different repo.
+
+## Solution
+
+1. **karAQI-data repo** — holds `static_forecast.json`, `iqair_forecast.json`,
+   and `model_eval.json`. CI workflows commit here instead of karAQI.
+2. **Dashboard fetches via raw GitHub URLs** — `raw.githubusercontent.com` serves
+   the JSON files. `st.cache_data(ttl=300)` caches for 5 minutes. Zero runtime
+   inference, near-instant page load.
+3. **DATA_REPO_TOKEN** — a GitHub PAT stored as a secret in karAQI, used by CI
+   to push to karAQI-data.
+
+## CI schedule
+
+| Workflow | Schedule | Purpose |
+|---|---|---|
+| feature_pipeline | Hourly `:35` | Fetch data, build features, test |
+| forecast_pipeline | Hourly `:40` | Run inference + IQAir, commit JSONs |
+| training_pipeline | Daily `00:30 UTC` | Train models, commit eval JSON |
+
+All hourly tasks run at `:35` and `:40` to avoid overlapping with the training
+pipeline (which runs at `00:30` and takes ~30 min).
+
+## IQAir scraping combined with forecast
+
+Earlier, IQAir was fetched in a separate workflow (`iqair_pipeline.yml`). This
+caused timestamp misalignment — the IQAir origin and model origin differed by
+2 minutes. Combined them into `export_forecast.py` so both share the same
+script execution and identical timestamp.
+
+## Font change
+
+Switched from Space Grotesk / DM Sans to **Poppins / Inter** for the dashboard.
+Poppins for headings and metric values (Google Material Design style), Inter for
+body text. Increased subtitle and description text sizes for better readability.
+
+## Weather insight images
+
+Two PNGs (`karak_weather_trends_2000_present.png` and
+`karak_aqi_open_meteo_seasonality.png`) are tracked in the main repo and
+fetched by the dashboard to show long-term weather patterns and AQI seasonality.
+

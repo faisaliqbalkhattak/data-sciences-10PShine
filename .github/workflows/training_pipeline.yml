@@ -1,14 +1,11 @@
 name: Training pipeline (daily)
 
-# Runs the training pipeline once a day per the assignment ("training pipeline
-# runs daily for model updates"). It rebuilds the feature store from the latest
-# keyless Open-Meteo data, trains both the daily and hourly models **from the
-# feature store**, registers the accepted models in the MLflow registry
-# (file-backed, no server), uploads the registry as a workflow artifact, and
-# exports a fresh pre-computed forecast JSON for the dashboard.
+# Trains models once daily at 00:30 UTC (night time in Pakistan).
+# After training, commits model_eval.json to karAQI-data repo.
+# Data artifacts are stored in karAQI-data, not the main karAQI repo.
 on:
   schedule:
-    - cron: "15 1 * * *"
+    - cron: "30 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -74,8 +71,21 @@ jobs:
             data/processed/training_frame_hourly.csv
           if-no-files-found: error
 
-      - name: Commit model evaluation JSON to repo
+      - name: Push model_eval.json to karAQI-data repo
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
+          if [ ! -f data/model_eval.json ]; then
+            echo "No model_eval.json generated"
+            exit 0
+          fi
+          git clone https://oauth2:${DATA_REPO_TOKEN}@github.com/faisaliqbalkhattak/karAQI-data.git /tmp/karAQI-data 2>/dev/null || {
+            echo "DATA_REPO_TOKEN not set or data repo not accessible — skipping push"
+            exit 0
+          }
+          mkdir -p /tmp/karAQI-data/data
+          cp data/model_eval.json /tmp/karAQI-data/data/
+          cd /tmp/karAQI-data
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/model_eval.json
@@ -83,8 +93,5 @@ jobs:
             echo "No changes to model eval JSON"
           else
             git commit -m "ci: refresh model evaluation JSON [skip ci]"
-            git stash --include-untracked
-            git pull --rebase origin main
-            git stash pop || true
             git push
           fi
