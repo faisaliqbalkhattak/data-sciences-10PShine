@@ -97,20 +97,16 @@ html, body, [class*="css"] {
     background: #f6eee7;
     background-image: radial-gradient(circle at 12% 4%, rgba(244, 122, 50, 0.14), transparent 26rem);
 }
-.block-container { max-width: 1560px; padding-top: 4.2rem; padding-bottom: 4rem; }
+.block-container { max-width: 1560px; padding-top: 1rem; padding-bottom: 2rem; }
 .main .block-container { padding-left: 2.5rem; padding-right: 2.5rem; }
 h1, h2, h3 {
     color: #241812; font-weight: 700; letter-spacing: -0.02em;
     font-family: 'Poppins', 'Inter', sans-serif;
 }
 section[data-testid="stSidebar"] { display: none; }
-header[data-testid="stHeader"] {
-    background: transparent !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-}
+header[data-testid="stHeader"], #MainMenu { display: none !important; }
 [data-testid="stDecoration"] { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
 
 /* Top bar */
 .topbar {
