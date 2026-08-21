@@ -1,7 +1,7 @@
 name: Forecast pipeline (hourly)
 
 # Generates the pre-computed forecast JSON for the dashboard.
-# Runs every hour at :40 (5 minutes after the feature pipeline at :35).
+# Runs every hour at :05 (4 minutes after the feature pipeline at :01).
 # Also triggered after the training pipeline completes.
 # Commits static_forecast.json to karAQI-data repo.
 #
@@ -10,7 +10,7 @@ name: Forecast pipeline (hourly)
 
 on:
   schedule:
-    - cron: "40 * * * *"
+    - cron: "05 * * * *"
   workflow_dispatch:
   workflow_run:
     workflows: ["Training pipeline (daily)"]

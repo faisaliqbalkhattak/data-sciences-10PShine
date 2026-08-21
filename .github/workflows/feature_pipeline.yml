@@ -1,12 +1,11 @@
 name: Feature pipeline (hourly)
 
 # Fetches Open-Meteo data, builds features, and runs tests.
-# Runs hourly at :35 (35 minutes after the hour) to allow the training
-# pipeline (daily 00:30 UTC) to finish before hourly updates resume.
+# Runs hourly at :01
 # Data artifacts are committed to the karAQI-data repo, not karAQI.
 on:
   schedule:
-    - cron: "35 * * * *"
+    - cron: "01 * * * *"
   workflow_dispatch:
   push:
   pull_request:

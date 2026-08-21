@@ -1,11 +1,11 @@
 name: Training pipeline (daily)
 
-# Trains models once daily at 00:30 UTC (night time in Pakistan).
+# Trains models once daily at 00:00 UTC (night time in Pakistan).
 # After training, commits model_eval.json to karAQI-data repo.
 # Data artifacts are stored in karAQI-data, not the main karAQI repo.
 on:
   schedule:
-    - cron: "30 0 * * *"
+    - cron: "00 0 * * *"
   workflow_dispatch:
 
 permissions:
