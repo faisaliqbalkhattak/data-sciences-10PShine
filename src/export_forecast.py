@@ -148,9 +148,13 @@ def export_forecast(source: str = "live") -> Path:
     current_aqi = _current_aqi_from_data(hourly)
 
     # Open-Meteo AQ forecast reference: 72h of hourly US AQI, free & keyless.
-    # This replaces IQAir which rate-limits CI runner IPs aggressively.
     ref_data = _fetch_open_meteo_aq_forecast()
-    logger.info("Open-Meteo AQ ref: %d values", len(ref_data))
+    logger.info("Open-Meteo AQ ref (raw): %d values", len(ref_data))
+
+    # Trim ref_forecast to start from the origin hour (skip past hours).
+    origin_iso = origin.isoformat()
+    ref_data = [r for r in ref_data if r["time"] >= origin_iso]
+    logger.info("Open-Meteo AQ ref (trimmed to origin %s): %d values", origin_iso, len(ref_data))
 
     # Build the outputs array
     outputs = []
@@ -164,13 +168,24 @@ def export_forecast(source: str = "live") -> Path:
             "category": aqi_category(row["value"]),
         })
 
+    # ref_now: find the Open-Meteo AQI for the current hour (closest to now).
+    now_iso = _current_hour_local().isoformat()
+    ref_now_val = None
+    for r in ref_data:
+        if r["time"] >= now_iso:
+            ref_now_val = r["aqi"]
+            break
+    # Fallback: if trimmed ref_data starts after now, use the first value.
+    if ref_now_val is None and ref_data:
+        ref_now_val = ref_data[0]["aqi"]
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": source,
         "origin": origin.isoformat(),
         "model": "aqi-hourly-ridge",
         "current_aqi": current_aqi,
-        "ref_now": ref_data[0]["aqi"] if ref_data else None,
+        "ref_now": ref_now_val,
         "outputs": outputs,
         "ref_forecast": ref_data,
     }

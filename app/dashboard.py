@@ -1,4 +1,4 @@
-"""Streamlit dashboard for the Karak AQI Predictor -- Google Material / IQAir style.
+"""Streamlit dashboard for the Karak AQI Predictor.
 
 Architecture: predictions are pre-computed by the CI pipelines (feature pipeline
 hourly, training pipeline daily) and stored in the karAQI-data repo as static
@@ -278,7 +278,7 @@ def _load_forecast() -> dict:
     return {}
 
 
-# IQAir-specific functions removed — reference data now lives inside
+# Reference data now lives inside
 # static_forecast.json under 'ref_forecast' / 'ref_now' keys.
 # The reference source is Open-Meteo AQ forecast (free, keyless, same US AQI scale).
 
@@ -593,7 +593,7 @@ def render_block_means(rows: pd.DataFrame) -> None:
     )
 
 
-IQAIR_GREEN = "#2e7d32"
+REF_GREEN = "#2e7d32"
 
 
 def render_prediction_bar_chart(rows: pd.DataFrame) -> None:
@@ -702,7 +702,7 @@ def render_main_chart(
             ref_df.columns = ["time", "aqi"]
             ref_layer = (
                 alt.Chart(ref_df)
-                .mark_line(strokeDash=[4, 3], color=IQAIR_GREEN, strokeWidth=2.2)
+                .mark_line(strokeDash=[4, 3], color=REF_GREEN, strokeWidth=2.2)
                 .encode(x=alt.X("time:T", title=None), y=alt.Y("aqi:Q", title="AQI", scale=y_scale), tooltip=tooltip)
             )
             layers.append(ref_layer)
@@ -719,7 +719,7 @@ def render_main_chart(
     swatches = (
         f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
-        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{IQAIR_GREEN};border-radius:2px;border-top:2px dashed {IQAIR_GREEN};"></span> Live from Open-Meteo (US AQI\u202f\u200a)</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{REF_GREEN};border-radius:2px;border-top:2px dashed {REF_GREEN};"></span> Live from Open-Meteo (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
         "</div>"
     )

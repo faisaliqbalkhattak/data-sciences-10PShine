@@ -78,20 +78,6 @@ def _champion_version() -> Optional[str]:
     return None
 
 
-def _iqair_forecast_reference() -> list[dict]:
-    """IQAir's own hourly AQI forecast for Karak (best-effort; empty on failure)."""
-    try:
-        from app.live_data import iqair_forecast_aqi
-
-        reference = iqair_forecast_aqi()
-        return [
-            {"time": str(ts), "aqi": round(float(value), 1)}
-            for ts, value in reference.items()
-        ]
-    except Exception:  # noqa: BLE001 - reference line is optional
-        return []
-
-
 def _forecast_payload(source: str) -> dict:
     hourly = load_latest_hourly(source)
     forecast = predict_latest(hourly)
@@ -115,7 +101,7 @@ def _forecast_payload(source: str) -> dict:
         "location": f"{config.CITY_NAME} ({config.LOCATION_LABEL})",
         "outputs": rows,
         "alerts": _alerts(rows),
-        "iqair_forecast": _iqair_forecast_reference(),
+        "ref_forecast": [],
         "current_conditions": current_conditions(hourly),
     }
 

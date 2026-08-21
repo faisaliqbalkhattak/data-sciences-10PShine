@@ -41,12 +41,12 @@ from src.ingest import (  # noqa: E402
     fetch_open_meteo_weather_history,
 )
 
-#: Open-Meteo AQ forecast endpoint (replaces IQAir scraping).
+#: Open-Meteo AQ forecast endpoint.
 AQ_FORECAST_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
 #: Cache the parsed forecast briefly so dashboard refreshes don't hammer the API.
-IQAIR_CACHE_TTL_SECONDS = 30 * 60
-_iqair_cache: dict = {"ts": None, "series": None}
+_FORECAST_CACHE_TTL_SECONDS = 30 * 60
+_forecast_cache: dict = {"ts": None, "series": None}
 
 #: Rows of history to serve as inference input (7 days is enough for the
 #: 24-hour EPA windows and all derived lag/rolling features).
@@ -136,7 +136,7 @@ def current_conditions(hourly: pd.DataFrame) -> dict:
     Returns a dict with ``time``, the three weather readings used in the hero
     strip (``temperature_2m``, ``relative_humidity_2m``, ``wind_speed_10m``),
     ``main_pollutant`` (the pollutant with the highest EPA sub-index at that
-    hour, like IQAir's widget) and its ``concentration``. Missing values become
+    hour) and its ``concentration``. Missing values become
     ``None``; a failure degrades gracefully to PM2.5.
     """
     if hourly is None or hourly.empty:
@@ -166,7 +166,7 @@ def _fetch_open_meteo_aq_forecast() -> pd.Series:
     """Fetch 72h hourly US AQI forecast from Open-Meteo (free, keyless).
 
     Returns a ``pd.Series`` of hourly AQI values indexed by local time.
-    This replaces the IQAir scraping which was rate-limited from CI.
+    This fetches from the Open-Meteo AQ forecast API (free, keyless).
     """
     try:
         url = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -191,17 +191,17 @@ def _fetch_open_meteo_aq_forecast() -> pd.Series:
         raise RuntimeError(f"Open-Meteo AQ forecast fetch failed: {exc}") from exc
 
 
-def iqair_forecast_aqi() -> pd.Series:
-    """Reference hourly AQI forecast for Karak (now from Open-Meteo).
+def reference_forecast_aqi() -> pd.Series:
+    """Reference hourly AQI forecast for Karak from Open-Meteo.
 
     Returns a ``pd.Series`` of hourly AQI values indexed by local time.
     Cached for 30 minutes to avoid hammering the API on dashboard refreshes.
     """
     now_ts = time.time()
-    series = _iqair_cache.get("series")
-    if series is None or now_ts - (_iqair_cache.get("ts") or 0) > IQAIR_CACHE_TTL_SECONDS:
+    series = _forecast_cache.get("series")
+    if series is None or now_ts - (_forecast_cache.get("ts") or 0) > _FORECAST_CACHE_TTL_SECONDS:
         series = _fetch_open_meteo_aq_forecast()
-        _iqair_cache.update({"ts": now_ts, "series": series})
+        _forecast_cache.update({"ts": now_ts, "series": series})
         return series
     # Re-anchor the cached values to the current hour.
     origin = _current_hour_local()

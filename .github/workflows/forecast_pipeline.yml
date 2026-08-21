@@ -5,8 +5,8 @@ name: Forecast pipeline (hourly)
 # Also triggered after the training pipeline completes.
 # Commits static_forecast.json to karAQI-data repo.
 #
-# IQAir data is fetched SEPARATELY by iqair_pipeline.yml (once per day).
-# This pipeline reads the stored IQAir data — no scraping at runtime.
+# Reference AQI data comes from Open-Meteo (free, keyless, no rate limits).
+# Our model predictions come from the trained Ridge model.
 
 on:
   schedule:
@@ -50,8 +50,7 @@ jobs:
           with open('data/static_forecast.json') as f:
               data = json.load(f)
           n = len(data.get('outputs', []))
-          iq = len(data.get('iqair_forecast', []))
-          print(f'Forecast OK: {n} outputs, {iq} IQAir refs')
+          print(f'Forecast OK: {n} outputs')
           if n != 30:
               print(f'ERROR: expected 30 outputs, got {n}', file=sys.stderr)
               sys.exit(1)

@@ -1,4 +1,4 @@
-"""Tests for the forecast export pipeline and IQAir scraping."""
+"""Tests for the forecast export pipeline."""
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ class TestExportForecast:
         with (
             patch("app.live_data.load_latest_hourly", return_value=mock_hourly),
         ):
-            # Import and monkeypatch the internal function
             import src.export_forecast as ef
 
             original_path = ef.FORECAST_PATH
@@ -64,50 +63,6 @@ class TestExportForecast:
             assert "value" in item, f"Missing 'value' in {item}"
             assert "category" in item, f"Missing 'category' in {item}"
             assert isinstance(item["value"], (int, float)), f"Value not numeric: {item['value']}"
-
-
-class TestIQAirScraping:
-    """Tests for the IQAir HTML scraper in app/live_data.py."""
-
-    def test_scraper_regex_matches_current_html(self) -> None:
-        """The regex must match the current IQAir HTML structure."""
-        import re
-
-        # Simplified version of the actual IQAir HTML (as of Aug 2026)
-        sample_html = """
-        <td><div class="flex"><div class="flex flex-col items-center gap-2 border-r border-dashed border-gray-200 px-2.5 text-sm text-gray-900">
-        <p class="max-w-12 truncate">Now</p>
-        <div class="text-black-50 aqi-bg-orange lgsm:h-[26px] lgsm:w-[50px] h-[22px] w-11 rounded-sm border border-solid border-transparent">
-        <p class="flex h-full w-full flex-col items-center justify-center text-sm font-medium">143</p>
-        </div>
-        </div></div></td>
-        <td><div class="flex"><div class="flex flex-col items-center gap-2 border-r border-dashed border-gray-200 px-2.5 text-sm text-gray-900">
-        <p class="max-w-12 truncate">17:00</p>
-        <div class="text-black-50 aqi-bg-orange lgsm:h-[26px] lgsm:w-[50px] h-[22px] w-11 rounded-sm border border-solid border-transparent">
-        <p class="flex h-full w-full flex-col items-center justify-center text-sm font-medium">142</p>
-        </div>
-        </div></div></td>
-        """
-
-        values = []
-        for m in re.finditer(r"aqi-bg-[a-z-]+.*?<p[^>]*>\s*(\d+)\s*</p>", sample_html, re.S):
-            values.append(float(m.group(1)))
-
-        assert values == [143.0, 142.0], f"Expected [143, 142], got {values}"
-
-    def test_aq_forecast_returns_series(self) -> None:
-        """iqair_forecast_aqi should return a pd.Series (or raise on network failure)."""
-        from app.live_data import iqair_forecast_aqi
-
-        try:
-            series = iqair_forecast_aqi()
-            assert isinstance(series, pd.Series)
-            if len(series) > 0:
-                assert series.index.dtype == "datetime64[ns]"
-                assert series.name == "aqi"
-        except RuntimeError:
-            # Network failure is acceptable in CI
-            pytest.skip("IQAir unavailable (rate-limited or no network)")
 
     def test_forecast_json_has_ref_data(self) -> None:
         """The static forecast JSON should contain Open-Meteo reference data."""

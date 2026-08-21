@@ -77,7 +77,7 @@ def test_fresh_store_is_not_topped_up(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# current_conditions helper (IQAir-style hero: weather + dominant pollutant)
+# current_conditions helper (hero section: weather + dominant pollutant)
 # ---------------------------------------------------------------------------
 
 
@@ -116,7 +116,7 @@ def test_current_conditions_handles_empty_frame():
 
 
 # ---------------------------------------------------------------------------
-# IQAir hourly forecast parser
+# Open-Meteo AQ forecast parser
 # ---------------------------------------------------------------------------
 
 
@@ -152,13 +152,13 @@ class _FakeResponse:
 def test_aq_forecast_parses_api_response_anchored_to_current_hour(monkeypatch):
     from app import live_data
 
-    monkeypatch.setattr(live_data, "_iqair_cache", {"ts": None, "series": None})
+    monkeypatch.setattr(live_data, "_forecast_cache", {"ts": None, "series": None})
     monkeypatch.setattr(
         live_data.requests, "get",
         lambda *a, **k: _FakeResponse(_open_meteo_aq_json()),
     )
 
-    series = live_data.iqair_forecast_aqi()
+    series = live_data.reference_forecast_aqi()
 
     assert isinstance(series, pd.Series)
     assert isinstance(series.index, pd.DatetimeIndex)
@@ -171,7 +171,7 @@ def test_aq_forecast_parses_api_response_anchored_to_current_hour(monkeypatch):
 def test_aq_forecast_caches_and_reanchors(monkeypatch):
     from app import live_data
 
-    monkeypatch.setattr(live_data, "_iqair_cache", {"ts": None, "series": None})
+    monkeypatch.setattr(live_data, "_forecast_cache", {"ts": None, "series": None})
     calls = {"n": 0}
 
     def fake_get(*a, **k):
@@ -180,7 +180,7 @@ def test_aq_forecast_caches_and_reanchors(monkeypatch):
 
     monkeypatch.setattr(live_data.requests, "get", fake_get)
 
-    first = live_data.iqair_forecast_aqi()
-    second = live_data.iqair_forecast_aqi()
+    first = live_data.reference_forecast_aqi()
+    second = live_data.reference_forecast_aqi()
     assert calls["n"] == 1  # second call served from cache
     assert (first.values == second.values).all()
