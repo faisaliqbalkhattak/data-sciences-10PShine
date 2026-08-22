@@ -32,9 +32,25 @@ class TestExportForecast:
         mock_model = MagicMock()
         mock_model.predict.return_value = [list(range(30))]
 
+        # Create a fake manifest so _load_manifest() doesn't fail
+        fake_manifest = {
+            "_meta": {
+                "feature_columns": list(_cfg.AIR_QUALITY_HOURLY_VARS) + list(_cfg.WEATHER_HOURLY_VARS),
+                "selected_model_by_group": {
+                    "hourly_points": "ridge",
+                    "six_hour_means": "ridge",
+                    "twelve_hour_means": "ridge",
+                },
+            },
+            "ridge": {"path": "fake.joblib", "metrics_by_group": {}},
+        }
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(fake_manifest))
+
         with (
             patch("app.live_data.load_latest_hourly", return_value=mock_hourly),
             patch("src.model_registry.load_hourly_model", return_value=mock_model),
+            patch("src.inference_hourly.MANIFEST_PATH", manifest_path),
         ):
             import src.export_forecast as ef
 
