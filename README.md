@@ -22,7 +22,8 @@ training_pipeline (daily)      ──────►   models/*.joblib, *.keras
   pushes model files + eval      ──────► data/model_eval.json
 
 forecast_pipeline (hourly)      ◄──────  models/*.joblib (downloads for inference)
-  runs Ridge inference                   data/static_forecast.json (pushes result)
+  loads model from MLflow/karAQI-data    data/static_forecast.json (pushes result)
+  reads features from DuckDB
 
 feature_pipeline (hourly)               data/ (raw CSVs, feature store)
 
@@ -37,9 +38,11 @@ All pipelines run on GitHub Actions. See [docs/cicd-pipelines.md](docs/cicd-pipe
 |---|---|---|---|
 | `feature_pipeline.yml` | Hourly at `:01` | Incremental data fetch (~1 row), build features, run tests | Feature store (DuckDB) |
 | `forecast_pipeline.yml` | Hourly at `:04` | Run Ridge inference, fetch Open-Meteo AQ forecast, export JSON | `static_forecast.json` → karAQI-data |
-| `training_pipeline.yml` | Daily at `00:00` | Incremental fetch, train models, register, export eval JSON | `model_eval.json` + model files → karAQI-data |
+| `training_pipeline.yml` | Daily at `00:00` | Incremental fetch, train 4 models (Ridge/RF/XGBoost/LSTM), champion comparison, register in MLflow, export eval JSON | `model_eval.json` + model files → karAQI-data |
 
 > **Incremental fetching:** The feature pipeline runs hourly and fetches only the new data since the last pull (typically ~1 row). Open-Meteo reanalysis data is immutable — historical values never change — so incremental fetching is safe and avoids re-downloading 4 years of data on every run. See [docs/data-sources.md](docs/data-sources.md).
+
+> **Champion comparison:** The training pipeline compares new model metrics against the current champion in MLflow. Only promotes if the new model is better on hourly_points RMSE. If worse, the old champion is kept and the comparison is logged. No silent fallbacks — the pipeline fails loudly if the registry is empty.
 
 > **GitHub Actions timing caveat:** Cron triggers are best-effort, not precise. Workflows are frequently delayed 5–30 minutes (sometimes longer) due to platform load — see [github/community#156282](https://github.com/orgs/community/discussions/156282). If the dashboard shows a previous hour's AQI, the CI pipeline was delayed. The data is still correct — it reflects the most recent successful run. See [docs/cicd-pipelines.md](docs/cicd-pipelines.md).
 
@@ -47,9 +50,11 @@ All pipelines run on GitHub Actions. See [docs/cicd-pipelines.md](docs/cicd-pipe
 
 ## Model Performance (Live Dashboard Metrics)
 
-The hourly Ridge model — the one currently serving predictions — produces 30 outputs per forecast origin: 24 hourly points (`t+1h` through `t+24h`), four six-hour block means (`t+25h` through `t+48h`), and two twelve-hour block means (`t+49h` through `t+72h`).
+The training pipeline trains **4 models** for the hourly 30-output forecast: Ridge, Random Forest, XGBoost, and LSTM. The champion is selected by lowest RMSE on the primary output group (hourly points). The model producing predictions on the dashboard is whatever won the champion comparison.
 
-### Hourly Ridge (selected model) — Rolling-Origin Evaluation
+30 outputs per forecast origin: 24 hourly points (`t+1h` through `t+24h`), four six-hour block means (`t+25h` through `t+48h`), and two twelve-hour block means (`t+49h` through `t+72h`).
+
+### Hourly Models — Rolling-Origin Evaluation
 
 Protocol: 3 expanding folds, 168-hour test windows, 72-hour embargo.
 
@@ -62,7 +67,7 @@ Protocol: 3 expanding folds, 168-hour test windows, 72-hour embargo.
 | Persistence baseline (25–48h) | 22.95 | 17.91 | -0.556 | 69.7% | 56.0% |
 | Persistence baseline (49–72h) | 27.50 | 22.95 | -1.269 | 56.3% | 51.6% |
 
-**Ridge beats both persistence and seasonal persistence on RMSE and MAE for all three output groups.** This is the release gate — see [docs/modeling-evaluation.md](docs/modeling-evaluation.md).
+**The selected model beats both persistence and seasonal persistence on RMSE and MAE for all three output groups.** This is the release gate. The champion comparison ensures only models that improve on the current best are promoted — see [docs/cicd-pipelines.md](docs/cicd-pipelines.md).
 
 ### Daily Model Comparison (chronological holdout, +1/+2/+3 days)
 
@@ -167,11 +172,9 @@ python -m src.build_features --fetch
 python -m src.feature_store backfill-hourly --replace
 python -m src.feature_store backfill-daily --replace
 
-# 3. Train models
-python -m src.train --store          # daily models
-python -m src.train_hourly --store   # hourly models
-
-# 4. Register champion
+# 3. Train modelspython -m src.train --store # daily models
+python -m src.train_hourly --store # hourly models (Ridge, RF, XGBoost, LSTM)
+# 4. Register champion (with comparison against current best)
 python -m src.model_registry register-hourly
 
 # 5. Generate forecast JSON
@@ -189,14 +192,14 @@ streamlit run app/dashboard.py
 
 ---
 
-## Feature Store and Model Registry
-
-| Component | Implementation | Why |
+## Feature Store and Model Registry| Component | Implementation | Why |
 |---|---|---|
 | Feature store | DuckDB (`data/feature_store/karak_feature_store.duckdb`) | Serverless, no API key, free, works on Windows |
 | Model registry | MLflow file-backed (`models/mlruns/`) | No tracking server needed, satisfies serverless requirement |
 
-Registered models: `aqi-hourly-ridge` (champion), `aqi-daily-h1`, `aqi-daily-h2`, `aqi-daily-h3`. See [docs/mlops-architecture.md](docs/mlops-architecture.md).
+The feature store is used by the **training and forecast pipelines** (not the dashboard). The forecast pipeline reads features from DuckDB (`--source store`). The model registry is used by the **forecast pipeline** to load the champion model for inference. The dashboard reads pre-computed JSON for speed.
+
+Registered models: `aqi-hourly` (champion, hourly 30-output), `aqi-daily-h1`, `aqi-daily-h2`, `aqi-daily-h3`.
 
 ---
 
