@@ -6,6 +6,19 @@ A **72-hour US EPA AQI forecast** for Karak, Pakistan, built as an end-to-end ma
 
 ---
 
+## Papers Reviewed
+
+The model selection was informed by the following research papers:
+
+1. **Comparative Analysis of Forecasting Models for Air Quality Index Prediction** (2024) — Compares LSTM, ARIMA/SARIMA, Facebook Prophet, curve fitting for AQI prediction
+2. **Machine Learning Models for Daily AQI Prediction: An In-depth Analysis** (2024) — Evaluates Extra Trees, Random Forest, LightGBM, KNN for daily AQI
+3. **Forecasting the Effect of Parameters on AQI Values with ML: Multiple Linear Regression** (2024) — Studies MLR, LSTM, CNN for AQI with metaheuristic optimization
+4. **A Temporal Deep Learning Framework for AQI Prediction using Time-Series Data** (2024) — LSTM-based framework for AQI time-series prediction
+5. **Mapping Socioeconomic Air Quality Disparities In Rwanda Using Sentinel-5P TROPOMI Data** (2024) — Satellite-derived AQI mapping for regions without ground monitors
+6. **Real-Time AQI Estimation: A Smart and Lightweight AI-Based System Using Gas Sensors** (2024) — DL and ML models for real-time AQI from sensor data
+
+---
+
 ## Live Dashboard
 
 **[kaqindex.streamlit.app](https://kaqindex.streamlit.app/)**
