@@ -40,6 +40,12 @@ jobs:
       - name: Install forecast pipeline dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-forecast.txt
 
+      - name: Fetch latest Open-Meteo data (incremental, keyless)
+        run: python -m src.build_features --fetch --incremental
+
+      - name: Backfill feature store
+        run: python -m src.feature_store backfill-hourly --replace
+
       - name: Fetch trained model from karAQI-data
         env:
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
