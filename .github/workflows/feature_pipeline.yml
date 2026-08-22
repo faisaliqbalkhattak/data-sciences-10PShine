@@ -31,8 +31,8 @@ jobs:
       - name: Run the test suite (CI check)
         run: python -m pytest -q --ignore=tests/test_model_registry.py
 
-      - name: Fetch raw Open-Meteo data (keyless)
-        run: python -m src.build_features --fetch
+      - name: Fetch raw Open-Meteo data incrementally (keyless)
+        run: python -m src.build_features --fetch --incremental
 
       - name: Backfill hourly feature store
         run: python -m src.feature_store backfill-hourly --replace

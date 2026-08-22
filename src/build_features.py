@@ -117,9 +117,15 @@ def build_feature_frames(
 
 
 def build_from_raw(
-    air_quality_path: Optional[Path] = None, weather_path: Optional[Path] = None
+    air_quality_path: Optional[Path] = None, weather_path: Optional[Path] = None,
+    incremental: bool = False,
 ) -> tuple[Path, Path]:
-    """Build both processed feature CSVs from the newest raw files."""
+    """Build both processed feature CSVs from the newest raw files.
+
+    When incremental=True and processed CSVs already exist, only the new rows
+    are appended (after merging the raw frames and computing features).  The
+    feature pipeline runs hourly so only ~1 row is appended per run.
+    """
     aq_path = air_quality_path or _newest_raw(
         "karak_aqi_training_open_meteo_hourly_*.csv"
     )
@@ -131,10 +137,26 @@ def build_from_raw(
     config.ensure_data_directories()
     hourly_out = config.DATA_PROCESSED_DIR / "karak_aqi_open_meteo_hourly_features.csv"
     daily_out = config.DATA_PROCESSED_DIR / "karak_aqi_open_meteo_daily_features.csv"
-    master.to_csv(hourly_out)
-    daily.to_csv(daily_out)
-    print(f"Saved hourly features ({len(master)} rows) -> {hourly_out}")
-    print(f"Saved daily features ({len(daily)} rows) -> {daily_out}")
+
+    if incremental and hourly_out.exists() and daily_out.exists():
+        # Append only new rows to existing processed CSVs
+        existing_hourly = pd.read_csv(hourly_out, parse_dates=["time"], index_col="time")
+        existing_daily = pd.read_csv(daily_out, parse_dates=["time"], index_col="time")
+        new_hourly = master.loc[~master.index.isin(existing_hourly.index)]
+        new_daily = daily.loc[~daily.index.isin(existing_daily.index)]
+        if len(new_hourly) == 0 and len(new_daily) == 0:
+            print("No new rows to append — processed CSVs are up to date.")
+            return hourly_out, daily_out
+        combined_hourly = pd.concat([existing_hourly, new_hourly]).sort_index()
+        combined_daily = pd.concat([existing_daily, new_daily]).sort_index()
+        combined_hourly.to_csv(hourly_out)
+        combined_daily.to_csv(daily_out)
+        print(f"Appended {len(new_hourly)} hourly, {len(new_daily)} daily rows -> {hourly_out}")
+    else:
+        master.to_csv(hourly_out)
+        daily.to_csv(daily_out)
+        print(f"Saved hourly features ({len(master)} rows) -> {hourly_out}")
+        print(f"Saved daily features ({len(daily)} rows) -> {daily_out}")
     return hourly_out, daily_out
 
 
@@ -144,6 +166,11 @@ def main() -> None:
         "--fetch",
         action="store_true",
         help="Fetch fresh raw Open-Meteo data before building features (feature pipeline mode).",
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Incremental mode: only fetch new data since the last pull, and append to processed CSVs.",
     )
     parser.add_argument("--start", default=config.AIR_QUALITY_START_DATE)
     parser.add_argument("--end", default=None)
@@ -155,8 +182,9 @@ def main() -> None:
         run_open_meteo_backfill(
             air_quality_start=args.start, weather_trend_start=config.WEATHER_TREND_START_DATE,
             end_date=args.end or config.AS_OF_DATE,
+            incremental=args.incremental,
         )
-    build_from_raw()
+    build_from_raw(incremental=args.incremental)
 
 
 if __name__ == "__main__":
