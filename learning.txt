@@ -1,201 +1,187 @@
-# 2026-07-29 — Location comparison: Karak Main Bazar vs Sabir Abad
+# Project Learning Journal — karAQI
 
-**Motivation**: the user moved the project location from Karak Main Bazar (33.1189° N, 71.0947° E) to Sabir Abad (33.1383653° N, 71.1909136° E), near their home.
+A chronological record of findings, decisions, and lessons learned during development.
 
-**Comparison script**: `development/compare_locations.py`
+---
 
-**Results (last 30 days, hourly, after timezone fix)**
+## 2026-07-29 — Location Selection: Karak Main Bazar vs. Sabir Abad
 
-| Metric | Main Bazar (old) | Sabir Abad (new) |
+I compared two nearby coordinates for the project location before settling on one.
+
+**Locations tested:**
+- Karak Main Bazar: 33.1189° N, 71.0947° E
+- Sabir Abad: 33.1384° N, 71.1909° E (closer to my home)
+
+**Results (last 30 days, hourly, after timezone fix):**
+
+| Metric | Main Bazar | Sabir Abad |
 |---|---|---|
 | PM2.5 cross-source r | 0.596 | 0.592 |
 | PM10 cross-source r | 0.523 | 0.522 |
 | O3 cross-source r | 0.480 | 0.479 |
-| Common OM/OW hours | 720 | 720 |
-| PM2.5 mean (OM) | 36.5 µg/m³ | 36.5 µg/m³ |
-| PM10 mean (OM) | 58.3 µg/m³ | 58.3 µg/m³ |
-| Ozone mean (OM) | 96.0 µg/m³ | 96.0 µg/m³ |
+| PM2.5 mean (Open-Meteo) | 36.5 µg/m³ | 36.5 µg/m³ |
+| PM10 mean (Open-Meteo) | 58.3 µg/m³ | 58.3 µg/m³ |
+| Ozone mean (Open-Meteo) | 96.0 µg/m³ | 96.0 µg/m³ |
 
-**Decision**: keep **Sabir Abad** as the active project location.
+**Decision:** Keep Sabir Abad as the active location.
 
-**Rationale**:
-- The two points are only ~9 km apart, so Open-Meteo and OpenWeather return essentially the same model-grid values.
-- Cross-source correlations are nearly identical (difference < 0.004), so data quality is the same.
-- Sabir Abad is closer to the user's actual home, making the forecast personally relevant.
-
-**Action taken**:
-- Updated `development/src/config.py` to Sabir Abad coordinates.
-- Backfilled raw data for Sabir Abad (2023-07-19 to 2026-07-29).
-- Rebuilt and executed `01_raw_data_check.ipynb`, `02_feature_eda.ipynb`, and `03_live_open_meteo_check.ipynb` for the new location.
-- Updated `development/API_documentation.md` and this file to reflect the active coordinates.
+**Why:** The two points are only about 9 km apart. Open-Meteo and OpenWeather return essentially the same grid-cell values for both. Cross-source correlations differ by less than 0.004, meaning data quality is identical. Sabir Abad is closer to my home, making the forecast personally relevant.
 
 ---
 
-the apis returned data in diff time zones first i set the timezone to auto so the one api give data of pakistan time and another give the data of the gmt then when i take the correlation of the data from teh both soursces the value was .4 which is not bad but not good either.
+## 2026-07-29 — Timezone Fix: The Root Cause of Low Correlation
 
-i fixed that by telling ith teh time zone
+When I first compared Open-Meteo and OpenWeather data, the PM2.5 correlation was only about 0.4. This seemed suspiciously low for two sources drawing from similar atmospheric models.
 
-"All timestamps are explicitly normalized to Asia/Karachi (UTC+5) at ingestion time to prevent cross-source misalignment
+**Root cause:** Open-Meteo returns timestamps in Asia/Karachi time, while OpenWeather returns UTC. Without normalizing both to the same timezone, the two datasets were shifted by 5 hours. This misaligned the diurnal AQI cycle — morning peaks in one source lined up with afternoon values in the other.
 
----
+**Fix:** I normalized all timestamps to Asia/Karachi (UTC+5) at ingestion time.
 
-# 2026-07-29 — Live API comparison & correlation deep-dive findings
+**Results after fix:**
+- Hourly PM2.5 correlation: 0.4 → 0.68
+- Daily PM2.5 correlation: 0.4 → 0.77
+- Testing a +120 minute shift only raised r to 0.697, confirming that timezone alignment — not hour-boundary offsets — was the dominant issue.
 
-**Notebook**: `development/notebooks/03_live_open_meteo_check.ipynb`
-**Location**: Karak, Pakistan — Sabir Abad area (33.1383653° N, 71.1909136° E)  
-**Original/old location**: Karak Main Bazar (33.1189° N, 71.0947° E)  
-**Target time**: 6:00 PM PKT (13:00 UTC), 2026-07-29
-
-## 1. Why the correlation was low (~0.4)
-
-- **Timezone was the dominant cause**: Open-Meteo returns Asia/Karachi time, while
-  OpenWeather returns UTC. Without normalization the two sources are shifted by
-  5 hours, which misaligns the diurnal AQI cycle.
-- **After timezone normalization** (last 30 days, hourly PM2.5): **r = 0.680**
-- **Daily aggregation further improves** correlation to **r = 0.771**
-- **Best minute-shift**: +120 min only raised r to 0.697, confirming that most of
-  the improvement comes from timezone alignment, not hour-boundary offsets.
-- The remaining ~0.3–0.4 unexplained variance is **expected model-to-model noise**
-  because Karak has no ground station and the APIs use different atmospheric
-  models / grid cells.
-
-## 2. Live values at 6:00 PM PKT, 2026-07-29
-
-| Variable | Open-Meteo (18:00 PKT) | OpenWeather (19:00 PKT, +60 min) |
-|----------|--------------------------|----------------------------------|
-| pm2_5    | 27.9 µg/m³               | 50.61 µg/m³                      |
-| pm10     | 42.7 µg/m³               | 105.61 µg/m³                     |
-| ozone    | 135.0 µg/m³              | 113.32 µg/m³                     |
-| no2      | 3.6 µg/m³                | 2.71 µg/m³                       |
-| so2      | 4.4 µg/m³                | 2.23 µg/m³                       |
-| co       | 278.0 µg/m³              | 310.07 µg/m³                     |
-| dust     | 28.0                     | —                                |
-| uv_index | 0.3                      | —                                |
-
-- Open-Meteo hit the target hour exactly (+0 min).
-- OpenWeather forecast nearest hour was 19:00 PKT (+60 min offset), so the
-  comparison is approximate.
-- The two sources differ substantially on PM10 and PM2.5. This is consistent
-  with model-to-model disagreement and the coarse grid over a rural/topographically
-  complex area like Karak.
-
-## 3. WAQI/AQICN sanity reference — stale data
-
-- Station: Peshawar US Consulate, Pakistan
-- WAQI AQI: 25, dominant pollutant pm25
-- **Critical finding**: the reported timestamp was **2025-03-04 15:00:00**, which is
-  more than four months old. The notebook flagged this as stale.
-- **Implication**: WAQI/Peshawar cannot currently be relied on as a live
-  validation source. Any cross-source validation should be done against
-  Open-Meteo and OpenWeather only, or a different live station must be found.
-
-## 4. What we are doing correctly
-
-- Timezone normalization to Asia/Karachi is implemented and verified to raise
-  correlation from ~0.4 to ~0.68.
-- Daily aggregation is a valid strategy and raises correlation further.
-- Open-Meteo is treated as the primary source; OpenWeather is used only for
-  cross-validation, which is the right design.
-- WAQI is treated as a sanity check only, and stale data is now flagged.
-
-## 5. What could still be improved / potential issues
-
-- **No ground truth**: Karak has no local monitoring station. Correlation between
-  two models is not the same as model accuracy.
-- **OpenWeather timestamp mismatch**: the forecast grid nearest to 6 PM PKT was
-  7 PM PKT. For exact hour comparisons, use the historical endpoint for past hours
-  and forecast endpoint for future hours.
-- **CO units**: OpenWeather reports CO in µg/m³; many AQI standards use ppm or
-  mg/m³. Any CO-based AQI must convert units first.
-- **AQI derivation**: the notebook currently compares raw concentrations. The
-  next step is to compute US EPA (or Pakistan EPA) AQI from each source and
-  compare those.
+**Lesson:** Always normalize timestamps to a single timezone before comparing or merging data from different APIs. This single fix improved correlation more than any model tuning could.
 
 ---
 
-# 2026-07-29 — Multi-pollutant correlation & time-alignment check
+## 2026-07-29 — Cross-Source Comparison: Live Values at 6:00 PM PKT
 
-**Notebook**: `development/notebooks/03_live_open_meteo_check.ipynb` (executed with outputs)
+I compared live readings from both APIs at 6:00 PM local time.
 
-## 1. Multi-pollutant correlations (last 30 days, hourly, after TZ fix)
+| Variable | Open-Meteo (18:00) | OpenWeather (19:00, +60 min) |
+|---|---|---|
+| PM2.5 | 27.9 µg/m³ | 50.61 µg/m³ |
+| PM10 | 42.7 µg/m³ | 105.61 µg/m³ |
+| Ozone | 135.0 µg/m³ | 113.32 µg/m³ |
+| NO2 | 3.6 µg/m³ | 2.71 µg/m³ |
+| SO2 | 4.4 µg/m³ | 2.23 µg/m³ |
+| CO | 278.0 µg/m³ | 310.07 µg/m³ |
+
+**Observations:**
+- Open-Meteo hit the target hour exactly. OpenWeather's nearest forecast hour was 60 minutes later.
+- The two sources differ substantially on PM10 and PM2.5 (factor of 2x). This is expected for a rural area with complex topography where the two models use different grid cells.
+- Ozone and NO2 agree reasonably well. CO and SO2 diverge, likely due to different emission parameterizations.
+
+---
+
+## 2026-07-29 — WAQI/Peshawar Station: Stale Data
+
+I checked the WAQI (World Air Quality Index) feed for the nearest station — Peshawar US Consulate, about 120 km from Karak.
+
+**Finding:** The reported timestamp was 2025-03-04 — over four months old at the time of checking. The station data was completely stale.
+
+**Implication:** WAQI cannot be used as a live validation source for Karak. The nearest ground monitor is too far away and its data is not current.
+
+---
+
+## 2026-07-29 — Multi-Pollutant Correlation Analysis
+
+After the timezone fix, I computed cross-source correlations for all pollutants (last 30 days, hourly):
 
 | Pollutant | Pearson r |
-|-----------|-----------|
-| O3        | 0.697     |
-| PM2.5     | 0.680     |
-| NO2       | 0.663     |
-| PM10      | 0.574     |
-| CO        | 0.481     |
-| SO2       | 0.437     |
+|---|---|
+| O3 | 0.697 |
+| PM2.5 | 0.680 |
+| NO2 | 0.663 |
+| PM10 | 0.574 |
+| CO | 0.481 |
+| SO2 | 0.437 |
 
-- Ozone and PM2.5 agree best between Open-Meteo and OpenWeather.
-- CO and SO2 agree least, probably because the two models parameterise emissions differently.
-- These numbers confirm that the ~0.4–0.7 range is the realistic agreement for modelled rural data, not a single bad pollutant.
+**Interpretation:** The 0.4–0.7 range is the realistic agreement for modeled rural data from two different atmospheric models. It is not caused by a single bad pollutant or by timestamp offsets (verified: timestamps align exactly after normalization). The remaining disagreement reflects genuine model-to-model differences in how each API parameterizes emissions and atmospheric chemistry over Karak's complex terrain.
 
-## 2. Time-alignment check
-
-- After normalising both sources to Asia/Karachi and resampling to a clean hourly grid, the timestamps on the common grid are **exactly equal** (`True`).
-- Both APIs stamp the hour at minute mark `0`.
-- This proves the correlation values are comparing the same hours; the remaining disagreement is genuine model-to-model noise.
-
-## 3. What this means
-
-- The timezone fix is verified and sufficient for hourly alignment.
-- The weak correlation is not caused by timestamp offsets.
-- For live comparisons, still watch the OpenWeather forecast offset (it was +60 min from 6 PM PKT in this run).
+**What I learned:** Correlation between two models is not the same as accuracy against ground truth. These numbers tell me the models agree roughly, but neither can be validated without a local monitoring station.
 
 ---
 
-# 2026-08-21 — Architecture: Static JSON Serving + Data Repo Split
+## 2026-08-21 — Architecture Decision: Static JSON Serving + Data Repo Split
 
-**Motivation**: CI commits (hourly forecast JSON, IQAir data, model eval) were
-cluttering the main repo commit history. The data repo `karAQI-data` was
-created to hold all CI-generated files, keeping the main `karAQI` repo clean.
+By late August, the CI pipelines were running hourly and committing forecast JSON files directly to the main karAQI repo. Within days, the commit history was overwhelmed with "ci: refresh forecast JSON" commits, making it impossible to see actual code changes.
 
-## Problem solved
+**Solution — two repos:**
+1. `karAQI` (code repo) — source code, models, notebooks, tests, CI workflows
+2. `karAQI-data` (data repo) — CI-generated JSON files (static_forecast.json, model_eval.json)
 
-- Hourly CI commits to the main repo would make it impossible to see real code
-  changes among hundreds of `ci: refresh forecast JSON` commits.
-- Streamlit Cloud reads from the main repo, so it needed a way to access data
-  from a different repo.
+**How it works:**
+- CI workflows push JSON files to karAQI-data using a fine-grained GitHub PAT (`DATA_REPO_TOKEN`).
+- The Streamlit dashboard reads these JSONs via raw GitHub URLs (`raw.githubusercontent.com`).
+- `st.cache_data(ttl=300)` caches the JSON for 5 minutes, so every visitor gets near-instant page load.
+- Zero runtime inference — the model never runs when someone opens the dashboard.
 
-## Solution
-
-1. **karAQI-data repo** — holds `static_forecast.json`, `iqair_forecast.json`,
-   and `model_eval.json`. CI workflows commit here instead of karAQI.
-2. **Dashboard fetches via raw GitHub URLs** — `raw.githubusercontent.com` serves
-   the JSON files. `st.cache_data(ttl=300)` caches for 5 minutes. Zero runtime
-   inference, near-instant page load.
-3. **DATA_REPO_TOKEN** — a GitHub PAT stored as a secret in karAQI, used by CI
-   to push to karAQI-data.
-
-## CI schedule
-
-| Workflow | Schedule | Purpose |
+**CI schedule (final):**
+| Pipeline | Schedule (UTC) | Purpose |
 |---|---|---|
-| feature_pipeline | Hourly `:35` | Fetch data, build features, test |
-| forecast_pipeline | Hourly `:40` | Run inference + IQAir, commit JSONs |
-| training_pipeline | Daily `00:30 UTC` | Train models, commit eval JSON |
+| Feature | Hourly :01 | Fetch data, build features, run tests |
+| Forecast | Hourly :04 | Run inference, fetch Open-Meteo AQ ref, export JSON |
+| Training | Daily 00:00 | Train all models, register in MLflow, export eval JSON |
 
-All hourly tasks run at `:35` and `:40` to avoid overlapping with the training
-pipeline (which runs at `00:30` and takes ~30 min).
+---
 
-## IQAir scraping combined with forecast
+## 2026-08-21 — IQAir Replaced by Open-Meteo
 
-Earlier, IQAir was fetched in a separate workflow (`iqair_pipeline.yml`). This
-caused timestamp misalignment — the IQAir origin and model origin differed by
-2 minutes. Combined them into `export_forecast.py` so both share the same
-script execution and identical timestamp.
+I initially used IQAir as the comparison reference on the dashboard — scraping their website for live AQI values. This failed because IQAir aggressively rate-limits anonymous scraping. GitHub Actions runners (cloud IPs) were blocked after just a few requests, returning 429 errors.
 
-## Font change
+**Options considered:**
+1. Add API key (paid, not free) — rejected for serverless constraint.
+2. Use AccuWeather (has AQI API) — requires API key.
+3. Use AQICN API (free token, 1000 req/min) — possible but adds another dependency.
+4. Use Open-Meteo AQ forecast API — free, keyless, same EPA AQI scale.
 
-Switched from Space Grotesk / DM Sans to **Poppins / Inter** for the dashboard.
-Poppins for headings and metric values (Google Material Design style), Inter for
-body text. Increased subtitle and description text sizes for better readability.
+**Decision:** Replaced IQAir with Open-Meteo's AQ forecast endpoint. It provides 96 hours of hourly US AQI for Karak, free and keyless. The 96-hour response is trimmed to 72 hours from the forecast origin to match our model's window.
 
-## Weather insight images
+**Files removed:** `src/fetch_iqair.py`, `.github/workflows/iqair_pipeline.yml`
 
-Two PNGs (`karak_weather_trends_2000_present.png` and
-`karak_aqi_open_meteo_seasonality.png`) are tracked in the main repo and
-fetched by the dashboard to show long-term weather patterns and AQI seasonality.
+**Lesson:** If a data source requires scraping HTML from a website, it will break when run from cloud infrastructure. Use official APIs whenever possible. If no official API exists, the comparison source is not reliable enough for automated pipelines.
 
+---
+
+## 2026-08-21 — CI Pipeline Push Failures
+
+The CI workflows that push JSON to karAQI-data failed silently for hours before I noticed.
+
+**Root cause:** The pipeline had `exit 0` on clone failure — it printed "skipping push" and reported success. GitHub Actions showed green checkmarks, but the JSON was never updated. The dashboard kept showing stale data from the previous successful run.
+
+**Fix:** Changed `exit 0` to `exit 1` with clear error messages. Workflows now fail visibly when the token is missing or the clone fails.
+
+**Lesson:** Pipeline failures must be loud. Silent success on partial failure is worse than a visible error — it gives false confidence that the system is working.
+
+---
+
+## 2026-08-21 — Training Pipeline Push Race Condition
+
+The training pipeline failed with: `error: cannot pull with rebase: You have unstaged changes`.
+
+**Root cause:** The pipeline generated `model_eval.json` (creating an unstaged change) before trying to pull-rebase the data repo. Git refused to rebase with dirty working tree.
+
+**Fix:** Added `git stash` before the pull-rebase step, then `git stash pop` after.
+
+---
+
+## 2026-08-22 — Dashboard Stale Predictions
+
+The dashboard was showing predictions from 4:00 PM when it was already 6:00 PM.
+
+**Root cause:** Same as the silent push failure — the forecast pipeline generated the correct JSON but failed to push it. The dashboard served the last successfully pushed file.
+
+**After fix:** The pipeline now fails loudly, and the dashboard footer shows a note explaining that GitHub Actions delays (5–30 minutes, sometimes longer) can cause the hero AQI to reflect a previous hour.
+
+---
+
+## General Lessons Learned
+
+1. **Timezone normalization is critical.** A 5-hour offset dropped correlation from 0.68 to 0.4. Always normalize at ingestion.
+
+2. **Cross-source correlation ≠ ground-truth accuracy.** Two models agreeing does not mean either is right. Be honest about what validation can and cannot prove.
+
+3. **Persistence is a strong baseline.** "Tomorrow = today's AQI" is hard to beat at 72 hours. Any complex model must prove it is better.
+
+4. **Silent pipeline failures are dangerous.** Always exit with a non-zero code on failure. Green checkmarks with stale data are worse than red crosses with error messages.
+
+5. **Separate dashboard and CI dependencies.** Streamlit Cloud installs everything in requirements.txt. MLflow's pyarrow dependency needs cmake, which Streamlit Cloud does not have. A lean `app/requirements.txt` solves this.
+
+6. **Data repos keep commit history clean.** Hourly JSON commits to the main repo bury real code changes. A separate data repo with raw GitHub URL access is the standard pattern.
+
+7. **Static serving beats runtime inference for dashboards.** Pre-computing predictions via CI gives every visitor instant page load.
+
+8. **Cron triggers are best-effort.** GitHub Actions scheduled workflows are frequently delayed. Design the system to tolerate this.
