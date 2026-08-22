@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional
 
 import joblib
 import numpy as np
@@ -26,6 +27,11 @@ from .train_hourly import (
 
 MANIFEST_PATH = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_models.json"
 RIDGE_ARTIFACT = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_ridge.joblib"
+MODEL_ARTIFACTS = {
+    "ridge": RIDGE_ARTIFACT,
+    "random_forest": config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_rf.joblib",
+    "xgboost": config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_xgb.joblib",
+}
 
 
 def _load_manifest(path: Path = MANIFEST_PATH) -> dict:
@@ -93,21 +99,39 @@ def forecast_rows(
 def predict_latest(
     hourly: pd.DataFrame,
     manifest_path: Path = MANIFEST_PATH,
-    model_path: Path = RIDGE_ARTIFACT,
+    model_path: Optional[Path] = None,
 ) -> pd.DataFrame:
-    """Predict from the last completed hourly row using the selected Ridge model."""
+    """Predict from the last completed hourly row using the selected model.
+
+    If model_path is not provided, loads the champion model from MLflow registry
+    (falling back to the local artifact specified in the manifest).
+    """
     manifest = _load_manifest(manifest_path)
     selected = manifest.get("_meta", {}).get("selected_model_by_group", {})
-    if set(selected.values()) != {"ridge"}:
-        raise ValueError(
-            "The inference contract currently requires Ridge to be selected for every output group."
-        )
-    if not model_path.exists():
-        raise FileNotFoundError(f"Hourly Ridge artifact not found: {model_path}")
+    best_model = selected.get("hourly_points", "ridge")
+
+    if model_path is None:
+        # Try MLflow registry first, then local artifact
+        try:
+            from .model_registry import load_hourly_model
+
+            model = load_hourly_model()
+        except Exception:
+            # Fallback to local artifact
+            local_path = MODEL_ARTIFACTS.get(best_model, RIDGE_ARTIFACT)
+            if not local_path.exists():
+                raise FileNotFoundError(
+                    f"No model found: MLflow registry empty and {local_path} missing. "
+                    f"Run `python -m src.train_hourly --store` first."
+                )
+            model = joblib.load(local_path)
+    else:
+        if not model_path.exists():
+            raise FileNotFoundError(f"Hourly model artifact not found: {model_path}")
+        model = joblib.load(model_path)
 
     features = build_hourly_training_frame(hourly, include_targets=False)
     columns = _validate_feature_schema(features, manifest)
-    model = joblib.load(model_path)
     prediction = model.predict(features[columns].iloc[[-1]])
     origin = pd.Timestamp(features.index[-1])
     return forecast_rows(origin, prediction[0])

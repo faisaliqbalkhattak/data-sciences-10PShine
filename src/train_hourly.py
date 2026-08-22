@@ -25,7 +25,9 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
+from sklearn.multioutput import MultiOutputRegressor
 from sklearn.metrics import (
     f1_score,
     mean_absolute_error,
@@ -36,6 +38,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBRegressor
 
 from . import config
 from .aqi import aqi_category, calculate_hourly_us_aqi
@@ -338,23 +341,44 @@ def run_rolling_origin_evaluation(
     n_splits: int = 3,
     test_size: int = 168,
 ) -> pd.DataFrame:
-    """Evaluate persistence and Ridge over expanding rolling-origin folds."""
+    """Evaluate all models over expanding rolling-origin folds."""
     rows = []
     for fold, train, test in rolling_origin_splits(
         frame, n_splits=n_splits, test_size=test_size
     ):
         X_train, X_test = train[feature_columns], test[feature_columns]
         y_train, y_test = train[TARGET_COLUMNS], test[TARGET_COLUMNS]
+
         ridge_alpha = select_ridge_alpha(X_train, y_train)
         ridge = Pipeline(
             [("scale", StandardScaler()), ("model", Ridge(alpha=ridge_alpha))]
         )
         ridge.fit(X_train, y_train)
+
+        rf = Pipeline([
+            ("scale", StandardScaler()),
+            ("model", MultiOutputRegressor(
+                RandomForestRegressor(n_estimators=200, max_depth=15, random_state=RANDOM_STATE, n_jobs=-1)
+            )),
+        ])
+        rf.fit(X_train, y_train)
+
+        xgb = Pipeline([
+            ("scale", StandardScaler()),
+            ("model", MultiOutputRegressor(
+                XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.1,
+                             random_state=RANDOM_STATE, n_jobs=-1, verbosity=0)
+            )),
+        ])
+        xgb.fit(X_train, y_train)
+
         test_positions = frame.index.get_indexer(test.index)
         predictions = {
             "persistence": persistence_predictions(test),
             "seasonal_persistence": seasonal_persistence_predictions(frame)[test_positions],
             "ridge": ridge.predict(X_test),
+            "random_forest": rf.predict(X_test),
+            "xgboost": xgb.predict(X_test),
         }
         for model_name, model_predictions in predictions.items():
             metric_rows, _ = evaluate_outputs(y_test, model_predictions, model_name)
@@ -571,6 +595,43 @@ def main(from_store: bool = False) -> None:
     }
     joblib.dump(ridge, MODELS_DIR / "aqi_forecast_hourly_ridge.joblib")
 
+    # Random Forest (multi-output)
+    rf = Pipeline([
+        ("scale", StandardScaler()),
+        ("model", MultiOutputRegressor(
+            RandomForestRegressor(n_estimators=200, max_depth=15, random_state=RANDOM_STATE, n_jobs=-1)
+        )),
+    ])
+    rf.fit(X_train, y_train)
+    rf_predictions = rf.predict(X_test)
+    rf_rows, rf_groups = evaluate_outputs(y_test, rf_predictions, "random_forest")
+    rows.extend(rf_rows)
+    artifacts["random_forest"] = {
+        "path": "models/aqi_forecast_hourly_rf.joblib",
+        "params": {"n_estimators": 200, "max_depth": 15},
+        "metrics_by_group": rf_groups,
+    }
+    joblib.dump(rf, MODELS_DIR / "aqi_forecast_hourly_rf.joblib")
+
+    # XGBoost (multi-output)
+    xgb = Pipeline([
+        ("scale", StandardScaler()),
+        ("model", MultiOutputRegressor(
+            XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.1,
+                         random_state=RANDOM_STATE, n_jobs=-1, verbosity=0)
+        )),
+    ])
+    xgb.fit(X_train, y_train)
+    xgb_predictions = xgb.predict(X_test)
+    xgb_rows, xgb_groups = evaluate_outputs(y_test, xgb_predictions, "xgboost")
+    rows.extend(xgb_rows)
+    artifacts["xgboost"] = {
+        "path": "models/aqi_forecast_hourly_xgb.joblib",
+        "params": {"n_estimators": 200, "max_depth": 6, "learning_rate": 0.1},
+        "metrics_by_group": xgb_groups,
+    }
+    joblib.dump(xgb, MODELS_DIR / "aqi_forecast_hourly_xgb.joblib")
+
     lstm = train_multioutput_lstm(
         X_train,
         y_train,
@@ -620,10 +681,21 @@ def main(from_store: bool = False) -> None:
         for result in release_gate.values()
     ):
         raise RuntimeError(
-            "Hourly release gate failed: Ridge must beat every deterministic baseline "
+            "Hourly release gate failed: best model must beat every deterministic baseline "
             "on both RMSE and MAE for every output group."
         )
-    selected_by_group = {group: "ridge" for group in release_gate}
+    # Select the best model per group from all trained models
+    ml_models = ["ridge", "random_forest", "xgboost"]
+    selected_by_group = {}
+    for group in sorted(rolling_grouped["group"].unique()):
+        group_rows = rolling_grouped[
+            (rolling_grouped["group"] == group)
+            & rolling_grouped["model"].isin(ml_models)
+        ]
+        if group_rows.empty:
+            selected_by_group[group] = "ridge"
+        else:
+            selected_by_group[group] = group_rows.loc[group_rows["rmse"].idxmin(), "model"]
     if from_store:
         source_path = config.FEATURE_STORE_PATH
         source_file_label = "feature_store://" + source_path.name

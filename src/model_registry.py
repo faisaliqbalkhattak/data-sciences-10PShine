@@ -38,9 +38,12 @@ import pandas as pd
 
 from . import config
 
-HOURLY_MODEL_NAME = "aqi-hourly-ridge"
+HOURLY_MODEL_NAME = "aqi-hourly"
 DAILY_MODEL_NAMES = {1: "aqi-daily-h1", 2: "aqi-daily-h2", 3: "aqi-daily-h3"}
 CHAMPION_ALIAS = "champion"
+HOURLY_MANIFEST = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_models.json"
+DAILY_MANIFEST = config.PROJECT_ROOT / "models" / "aqi_forecast_models.json"
+RIDGE_ARTIFACT = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_ridge.joblib"
 
 HOURLY_MANIFEST = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_models.json"
 DAILY_MANIFEST = config.PROJECT_ROOT / "models" / "aqi_forecast_models.json"
@@ -69,43 +72,115 @@ def _set_champion(client, model_name: str, version: str) -> None:
     client.set_registered_model_alias(model_name, CHAMPION_ALIAS, version)
 
 
+def _get_current_champion_metrics(
+    model_name: str,
+    store_dir: Optional[Path] = None,
+) -> Optional[dict]:
+    """Get the current champion's primary metric (RMSE for hourly, grouped)."""
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    try:
+        mlflow.set_tracking_uri(_tracking_uri(store_dir))
+        client = MlflowClient(_tracking_uri(store_dir))
+        versions = client.search_model_versions(f"name='{model_name}'")
+        for v in versions:
+            if CHAMPION_ALIAS in (v.aliases or []):
+                run = client.get_run(v.run_id)
+                return run.data.metrics
+        return None
+    except Exception:
+        return None
+
+
+def _should_promote(
+    new_metrics: dict,
+    current_champion_metrics: Optional[dict],
+    metric_key: str = "hourly_points_rmse",
+) -> tuple[bool, str]:
+    """Check if new model should be promoted over current champion.
+
+    Returns (should_promote, reason).
+    """
+    if current_champion_metrics is None:
+        return True, "No current champion; promoting new model."
+
+    current_rmse = current_champion_metrics.get(metric_key)
+    new_rmse = new_metrics.get(metric_key)
+
+    if current_rmse is None or new_rmse is None:
+        return True, "Missing metric in champion or new model; promoting."
+
+    if new_rmse < current_rmse:
+        improvement = (current_rmse - new_rmse) / current_rmse * 100
+        return True, f"New model RMSE {new_rmse:.2f} < champion {current_rmse:.2f} ({improvement:.1f}% better)"
+    else:
+        degradation = (new_rmse - current_rmse) / current_rmse * 100
+        return False, f"New model RMSE {new_rmse:.2f} >= champion {current_rmse:.2f} ({degradation:.1f}% worse); keeping champion."
+
+
 def register_hourly(
     manifest_path: Optional[Path] = None,
     store_dir: Optional[Path] = None,
 ) -> dict:
-    """Register the hourly Ridge artifact and its metrics as one MLflow run."""
+    """Register the best hourly model and its metrics as one MLflow run.
+
+    Compares against the current champion and only promotes if the new model
+    is better on the primary metric (hourly_points RMSE).
+    """
     import mlflow
     from mlflow.tracking import MlflowClient
 
     manifest = _load_manifest(Path(manifest_path) if manifest_path else HOURLY_MANIFEST)
     meta = manifest.get("_meta", {})
-    ridge = manifest.get("ridge")
-    if ridge is None or not ridge.get("path"):
-        raise ValueError("Hourly manifest has no persisted Ridge artifact entry.")
+    selected_by_group = meta.get("selected_model_by_group", {})
 
-    artifact = _resolve_artifact(ridge["path"], manifest_path)
+    # Find the best model from the selected groups
+    # Use the model that was selected for hourly_points (primary group)
+    best_model_name = selected_by_group.get("hourly_points", "ridge")
+    best_model = manifest.get(best_model_name)
+    if best_model is None or not best_model.get("path"):
+        raise ValueError(f"Hourly manifest has no persisted artifact for {best_model_name}.")
+
+    artifact = _resolve_artifact(best_model["path"], manifest_path)
     if not artifact.exists():
-        raise FileNotFoundError(f"Hourly Ridge artifact not found: {artifact}")
+        raise FileNotFoundError(f"Hourly {best_model_name} artifact not found: {artifact}")
+
+    # Get new model metrics
+    new_metrics = {}
+    for group, metrics in best_model.get("metrics_by_group", {}).items():
+        for name, value in metrics.items():
+            new_metrics[f"{group}_{name}"] = float(value)
+
+    # Check against current champion
+    current_champion_metrics = _get_current_champion_metrics(HOURLY_MODEL_NAME, store_dir)
+    promote, reason = _should_promote(new_metrics, current_champion_metrics)
+    logger.info("Champion comparison: %s", reason)
+
+    if not promote:
+        logger.info("Keeping current champion. Skipping registration.")
+        return {
+            "model_name": HOURLY_MODEL_NAME,
+            "version": "unchanged",
+            "alias": CHAMPION_ALIAS,
+            "reason": reason,
+        }
 
     mlflow.set_tracking_uri(_tracking_uri(store_dir))
     mlflow.set_experiment("karak-aqi-hourly")
-    with mlflow.start_run(run_name=f"hourly-ridge-{date.today().isoformat()}") as run:
+    with mlflow.start_run(run_name=f"hourly-{best_model_name}-{date.today().isoformat()}") as run:
         mlflow.log_params(
             {
-                "alpha": ridge.get("params", {}).get("alpha"),
-                "candidate_alphas": json.dumps(
-                    ridge.get("params", {}).get("candidate_alphas", [])
-                ),
-                "selected_by_group": json.dumps(meta.get("selected_model_by_group", {})),
+                "selected_model": best_model_name,
+                "selected_by_group": json.dumps(selected_by_group),
                 "output_count": meta.get("output_count"),
                 "n_train_rows": meta.get("n_train_rows"),
                 "n_test_rows": meta.get("n_test_rows"),
                 "source_sha256": meta.get("source_sha256"),
             }
         )
-        for group, metrics in ridge.get("metrics_by_group", {}).items():
-            for name, value in metrics.items():
-                mlflow.log_metric(f"{group}_{name}", float(value))
+        for name, value in new_metrics.items():
+            mlflow.log_metric(name, value)
         feature_columns = meta.get("feature_columns", []) or []
         input_example = (
             pd.DataFrame(
@@ -128,6 +203,8 @@ def register_hourly(
         "model_name": HOURLY_MODEL_NAME,
         "version": registered.version,
         "alias": CHAMPION_ALIAS,
+        "promoted_model": best_model_name,
+        "reason": reason,
         "run_id": run.info.run_id,
     }
 
@@ -214,9 +291,9 @@ def _load_pipeline(path: Path):
 def load_hourly_model(store_dir: Optional[Path] = None):
     """Load the champion hourly model, falling back to the local manifest artifact.
 
-    Prefers the MLflow-registered version so the dashboard uses whatever the
-    training pipeline accepted last. Falls back to the local joblib so the
-    dashboard and tests work even before the first registry run.
+    Prefers the MLflow-registered version so the forecast pipeline uses whatever
+    the training pipeline accepted last. Falls back to the local joblib so the
+    pipeline and tests work even before the first registry run.
     """
     import mlflow
 
@@ -225,12 +302,24 @@ def load_hourly_model(store_dir: Optional[Path] = None):
         return mlflow.pyfunc.load_model(f"models:/{HOURLY_MODEL_NAME}@{CHAMPION_ALIAS}")
     except Exception as exc:  # noqa: BLE001 - registry may be empty on first run
         logger.info("MLflow champion not found (%s); falling back to local artifact.", exc)
-        if not RIDGE_ARTIFACT.exists():
-            raise FileNotFoundError(
-                "No registered hourly model and no local artifact; run "
-                "`python -m src.train_hourly` first."
-            ) from exc
-        return _load_pipeline(RIDGE_ARTIFACT)
+        # Try to find any local model artifact
+        manifest = _load_manifest(HOURLY_MANIFEST)
+        meta = manifest.get("_meta", {})
+        selected = meta.get("selected_model_by_group", {})
+        best_model = selected.get("hourly_points", "ridge")
+        entry = manifest.get(best_model, {})
+        artifact_path = entry.get("path")
+        if artifact_path:
+            artifact = _resolve_artifact(artifact_path, None)
+            if artifact.exists():
+                return _load_pipeline(artifact)
+        # Final fallback: try Ridge
+        if RIDGE_ARTIFACT.exists():
+            return _load_pipeline(RIDGE_ARTIFACT)
+        raise FileNotFoundError(
+            "No registered hourly model and no local artifact; run "
+            "`python -m src.train_hourly` first."
+        ) from exc
 
 
 def list_registered(store_dir: Optional[Path] = None) -> list[dict]:

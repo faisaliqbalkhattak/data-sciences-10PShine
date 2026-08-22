@@ -61,7 +61,7 @@ jobs:
           echo "Model loaded from karAQI-data: $(ls -la models/aqi_forecast_hourly_ridge.joblib)"
 
       - name: Export pre-computed forecast (static JSON)
-        run: python -m src.export_forecast --source live
+        run: python -m src.export_forecast --source store
 
       - name: Verify forecast file exists and is valid JSON
         run: |
