@@ -40,6 +40,26 @@ jobs:
       - name: Install forecast pipeline dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-forecast.txt
 
+      - name: Fetch trained model from karAQI-data
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          if [ -z "$DATA_REPO_TOKEN" ]; then
+            echo "ERROR: DATA_REPO_TOKEN not set. Cannot fetch model."
+            exit 1
+          fi
+          git clone https://oauth2:${DATA_REPO_TOKEN}@github.com/faisaliqbalkhattak/karAQI-data.git /tmp/karAQI-data || {
+            echo "ERROR: Failed to clone karAQI-data. Check DATA_REPO_TOKEN."
+            exit 1
+          }
+          mkdir -p models
+          cp /tmp/karAQI-data/models/aqi_forecast_hourly_ridge.joblib models/ 2>/dev/null || {
+            echo "ERROR: No trained model found in karAQI-data. Run training pipeline first."
+            exit 1
+          }
+          cp /tmp/karAQI-data/models/aqi_forecast_hourly_models.json models/ 2>/dev/null || true
+          echo "Model loaded from karAQI-data: $(ls -la models/aqi_forecast_hourly_ridge.joblib)"
+
       - name: Export pre-computed forecast (static JSON)
         run: python -m src.export_forecast --source live
 
