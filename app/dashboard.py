@@ -1206,6 +1206,10 @@ def main() -> None:
     generated_str = (
         pd.Timestamp(generated).strftime("%d %b %Y, %I:%M %p") if generated else "\u2014"
     )
+    _delay_link = (
+        '<a href="https://github.com/orgs/community/discussions/156282" '
+        'target="_blank" style="color:' + INFO_BLUE + '">community#156282</a>'
+    )
     status_html = (
         '<div style="display:flex; gap:24px; flex-wrap:wrap; font-size:12px; color:'
         + MUTED
@@ -1218,11 +1222,17 @@ def main() -> None:
         + "</b></span>"
         "<span>Reference: Open-Meteo AQ (US AQI\u202f\u200a)</span>"
         "</div>"
-        '<div style="font-size:11px; color:'
+        '<div style="font-size:14px; color:'
         + MUTED
         + '; margin-top:4px;">'
         "Pre-computed forecasts served statically from karAQI-data. "
-        "Auto-updates via GitHub Actions: feature pipeline (hourly) + training pipeline (daily 00:30 UTC)."
+        "Auto-updates via GitHub Actions: feature pipeline (hourly :01) + forecast pipeline (hourly :04) + training pipeline (daily 00:00 UTC)."
+        "</div>"
+        '<div style="font-size:13px; color:'
+        + MUTED
+        + '; margin-top:4px; font-style:italic;">'
+        "If the hero AQI shows a previous hour, the CI pipeline was delayed by GitHub Actions. "
+        "See " + _delay_link + "."
         "</div>"
     )
     st.markdown(status_html, unsafe_allow_html=True)

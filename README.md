@@ -1,6 +1,6 @@
 # karAQI — Karak AQI Predictor
 
-This project forecasts a **US EPA AQI calculated from Open-Meteo modeled concentrations** for the Sabir Abad area of Karak, Pakistan. Open-Meteo is the active provider; OpenWeather and WAQI/AQICN remain historical sanity-check evidence only and are not active dependencies.
+This project forecasts a **US EPA AQI calculated from Open-Meteo modeled concentrations** for Karak, Pakistan. Open-Meteo is the active data provider; no local ground monitor exists in Karak.
 
 ## Architecture
 
@@ -10,24 +10,33 @@ The system uses a **static JSON serving architecture** — predictions are pre-c
 karAQI (this repo)                    karAQI-data (data repo)
 ─────────────────────                 ─────────────────────────
 CI workflows generate JSONs   ───►   data/static_forecast.json
-  feature_pipeline (hourly)           data/iqair_forecast.json
-  training_pipeline (daily)           data/model_eval.json
+  feature_pipeline (hourly)           data/model_eval.json
+  training_pipeline (daily)
   forecast_pipeline (hourly)
                                      ◄── Dashboard reads via raw URLs
 ```
 
-| Workflow | Schedule | What it does | Commits to |
+| Workflow | Schedule (UTC) | What it does | Pushes to |
 |---|---|---|---|
-| `feature_pipeline.yml` | Hourly (`:35`) | Fetch data, build features, run tests | artifact upload |
-| `forecast_pipeline.yml` | Hourly (`:40`) | Run inference, fetch IQAir, export JSONs | karAQI-data |
-| `training_pipeline.yml` | Daily (`00:30 UTC`) | Train models, register in MLflow, export eval JSON | karAQI-data |
+| `feature_pipeline.yml` | Hourly at `:01` | Fetch Open-Meteo data, build features, run tests | artifact upload |
+| `forecast_pipeline.yml` | Hourly at `:04` | Run Ridge inference, fetch Open-Meteo AQ forecast, export JSON | karAQI-data |
+| `training_pipeline.yml` | Daily at `00:00` | Train all models, register in MLflow, export eval JSON | karAQI-data |
+
+### GitHub Actions timing caveat
+
+GitHub Actions cron triggers are **best-effort, not precise**. Scheduled workflows are frequently delayed by 5–30 minutes (and occasionally longer) due to platform load and runner availability — see [github/community#156282](https://github.com/orgs/community/discussions/156282).
+
+**What this means for the dashboard:** If you see a previous hour's AQI as the hero section value, it is because the CI pipeline that generates the forecast JSON was delayed by GitHub Actions infrastructure. The data is still correct — it just reflects the most recent successful pipeline run, which may be 30–60 minutes behind clock time during peak periods.
+
+The pipelines run in the correct order (features → forecast → training), so data consistency is maintained regardless of absolute timing.
 
 ### Dashboard (Streamlit Community Cloud)
 
 - Deployed at [kaqindex.streamlit.app](https://kaqindex.streamlit.app/)
 - Reads all data from `karAQI-data` repo — no local data files needed
-- **Live tab**: IQAir live AQI as primary, our current-hour AQI as secondary
-- **Store tab**: Our current-hour AQI as primary, IQAir as secondary
+- **My model tab**: Our current-hour AQI as primary, Open-Meteo as secondary, model's next-hour prediction as tertiary
+- **Live tab**: Open-Meteo live AQI as primary, our current-hour AQI as secondary
+- Reference comparison: Open-Meteo AQ forecast (free, keyless, same US EPA AQI scale)
 - Font: Poppins/Inter (Google Material Design inspired)
 
 ## MLOps phase
