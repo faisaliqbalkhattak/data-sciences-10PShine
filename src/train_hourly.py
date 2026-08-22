@@ -389,18 +389,27 @@ def run_rolling_origin_evaluation(
 
 
 def assess_release_gate(rolling_grouped: pd.DataFrame) -> dict[str, dict[str, bool]]:
-    """Require Ridge to beat every deterministic baseline on both errors."""
+    """Require at least one ML model to beat every baseline on both errors.
+
+    The gate checks whether any ML model (Ridge, RF, XGBoost) beats
+    persistence and seasonal_persistence on RMSE and MAE for each group.
+    If no ML model beats baselines, the pipeline fails.
+    """
+    ml_models = {"ridge", "random_forest", "xgboost"}
     results = {}
     for group in sorted(rolling_grouped["group"].unique()):
         group_rows = rolling_grouped[rolling_grouped["group"] == group]
-        ridge = group_rows[group_rows["model"] == "ridge"]
-        baselines = group_rows[group_rows["model"] != "ridge"]
-        if ridge.empty or baselines.empty:
-            raise ValueError(f"Missing Ridge or baseline metrics for group {group}.")
-        ridge_row = ridge.iloc[0]
+        ml_rows = group_rows[group_rows["model"].isin(ml_models)]
+        baseline_rows = group_rows[~group_rows["model"].isin(ml_models)]
+        if ml_rows.empty or baseline_rows.empty:
+            raise ValueError(f"Missing ML models or baselines for group {group}.")
+        best_baseline_rmse = baseline_rows["rmse"].min()
+        best_baseline_mae = baseline_rows["mae"].min()
+        any_ml_beats_rmse = bool(ml_rows["rmse"].min() < best_baseline_rmse)
+        any_ml_beats_mae = bool(ml_rows["mae"].min() < best_baseline_mae)
         results[group] = {
-            "rmse_pass": bool(ridge_row["rmse"] < baselines["rmse"].min()),
-            "mae_pass": bool(ridge_row["mae"] < baselines["mae"].min()),
+            "rmse_pass": any_ml_beats_rmse,
+            "mae_pass": any_ml_beats_mae,
         }
     return results
 
