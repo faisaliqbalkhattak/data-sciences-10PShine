@@ -93,10 +93,10 @@ jobs:
             echo "Set it at: https://github.com/faisaliqbalkhattak/karAQI/settings/secrets/actions"
             exit 1
           fi
-          git clone https://oauth2:${DATA_REPO_TOKEN}@github.com/faisaliqbalkhattak/karAQI-data.git /tmp/karAQI-data || {
-            echo "ERROR: Failed to clone karAQI-data repo. Check DATA_REPO_TOKEN permissions."
+          if [ ! -d /tmp/karAQI-data/.git ]; then
+            echo "ERROR: karAQI-data checkout is missing from the model fetch step."
             exit 1
-          }
+          fi
           mkdir -p /tmp/karAQI-data/data
           cp data/static_forecast.json /tmp/karAQI-data/data/
           cd /tmp/karAQI-data
