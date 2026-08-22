@@ -163,10 +163,11 @@ def current_conditions(hourly: pd.DataFrame) -> dict:
 
 
 def _fetch_open_meteo_aq_forecast() -> pd.Series:
-    """Fetch 72h hourly US AQI forecast from Open-Meteo (free, keyless).
+    """Fetch 96h (4-day) hourly US AQI forecast from Open-Meteo (free, keyless).
 
-    Returns a ``pd.Series`` of hourly AQI values indexed by local time.
-    This fetches from the Open-Meteo AQ forecast API (free, keyless).
+    We pull 4 days so that after trimming past hours we always have at least
+    72 hours of future forecast data.  Returns a ``pd.Series`` of hourly AQI
+    values indexed by local time.
     """
     try:
         url = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -174,7 +175,7 @@ def _fetch_open_meteo_aq_forecast() -> pd.Series:
             "latitude": 33.1255,
             "longitude": 71.5372,
             "hourly": "us_aqi",
-            "forecast_days": 3,
+            "forecast_days": 4,
             "timezone": "Asia/Karachi",
         }
         resp = requests.get(url, params=params, timeout=15)

@@ -40,9 +40,11 @@ FORECAST_PATH = config.PROJECT_ROOT / "data" / "static_forecast.json"
 
 
 def _fetch_open_meteo_aq_forecast() -> list[dict]:
-    """Fetch 72h hourly US AQI forecast from Open-Meteo (free, keyless).
+    """Fetch 96h (4-day) hourly US AQI forecast from Open-Meteo (free, keyless).
 
-    Returns a list of dicts with 'time' and 'aqi' keys.
+    We pull 4 days so that after trimming past hours we always have at least
+    72 hours of future forecast data.  Returns a list of dicts with 'time'
+    and 'aqi' keys.
     """
     try:
         url = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -50,7 +52,7 @@ def _fetch_open_meteo_aq_forecast() -> list[dict]:
             "latitude": 33.1255,
             "longitude": 71.5372,
             "hourly": "us_aqi",
-            "forecast_days": 3,
+            "forecast_days": 4,
             "timezone": "Asia/Karachi",
         }
         resp = _requests.get(url, params=params, timeout=15)

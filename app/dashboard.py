@@ -134,13 +134,13 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
 }
 div[data-testid="stMetric"] { padding: 16px 18px; }
 div[data-testid="stMetricLabel"] p {
-    color: #5c4a3f; font-size: 11px; letter-spacing: .4px; text-transform: uppercase;
+    color: #5c4a3f; font-size: 14px; letter-spacing: .4px; text-transform: uppercase;
 }
 div[data-testid="stMetricValue"] {
     color: #241812; font-size: 26px; font-weight: 700;
     font-family: 'Poppins', 'Inter', sans-serif;
 }
-div[data-testid="stMetricDelta"] { font-size: 12px; font-weight: 600; }
+div[data-testid="stMetricDelta"] { font-size: 15px; font-weight: 600; }
 div[data-testid="stExpander"] { margin-top: 12px; }
 div[data-testid="stExpander"] summary {
     font-weight: 700; color: #241812; font-family: 'Poppins', 'Inter', sans-serif;
@@ -155,7 +155,7 @@ div[data-testid="stRadio"] > div[role="radiogroup"] {
 }
 div[data-testid="stRadio"] label {
     flex: 1 1 0; text-align: center; border-radius: 999px; padding: 7px 6px; margin: 0;
-    color: #5c4a3f !important; font-weight: 600; font-size: 13px; white-space: nowrap;
+    color: #5c4a3f !important; font-weight: 600; font-size: 16px; white-space: nowrap;
 }
 div[data-testid="stRadio"] label:hover { background: rgba(234, 219, 208, 0.5); }
 div[data-testid="stRadio"] label:has(input:checked) {
@@ -203,10 +203,10 @@ hr { border-color: #eadbd0; }
 @media (max-width: 768px) {
     .block-container { padding-top: 2.8rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
     [data-testid="stVerticalBlockBorderWrapper"] { padding: 4px 10px !important; }
-    div[data-testid="stRadio"] label { font-size: 11px !important; padding: 5px 4px !important; }
-    div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 12px !important; }
+    div[data-testid="stRadio"] label { font-size: 14px !important; padding: 5px 4px !important; }
+    div.stButton > button { height: 32px !important; padding: 4px 14px !important; font-size: 15px !important; }
     div[data-testid="stMetric"] { padding: 10px 12px !important; }
-    div[data-testid="stMetricValue"] { font-size: 20px !important; }
+    div[data-testid="stMetricValue"] { font-size: 23px !important; }
     .main .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
 }
 </style>
@@ -426,12 +426,12 @@ def render_hero(
     lines_html = ""
     if secondary_line:
         lines_html += (
-            f'<div style="font-size:13px; margin-top:8px; opacity:.92; font-weight:600;">'
+            f'<div style="font-size:16px; margin-top:8px; opacity:.92; font-weight:600;">'
             f"{secondary_line}</div>"
         )
     if tertiary_line:
         lines_html += (
-            f'<div style="font-size:12px; margin-top:4px; opacity:.80; font-weight:500;">'
+            f'<div style="font-size:15px; margin-top:4px; opacity:.80; font-weight:500;">'
             f"{tertiary_line}</div>"
         )
 
@@ -447,14 +447,14 @@ def render_hero(
                    text-align:center; color:#fff;">
                 <div style="font-size:52px; font-weight:700; line-height:1; letter-spacing:-.03em;
                      font-family:'Poppins', sans-serif;">{badge_aqi:.0f}</div>
-                <div style="font-size:11px; letter-spacing:.06em; opacity:.85; margin-top:4px; font-weight:600;">{badge_label}</div>
+                <div style="font-size:14px; letter-spacing:.06em; opacity:.85; margin-top:4px; font-weight:600;">{badge_label}</div>
               </div>
               <div style="color:{text_color}; padding-top:4px;">{WORRIED_FACE_SVG}</div>
             </div>
             <div style="font-size:22px; font-weight:700; margin-top:14px; letter-spacing:-.02em;">{badge_category}</div>
             <div style="height:1px; background:rgba(255,255,255,.35); margin:12px 0;"></div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;
-                 font-size:13px; font-weight:600;">
+                 font-size:16px; font-weight:600;">
               <span>Main pollutant: {pollutant}</span>
               <span>{concentration_html}</span>
             </div>
@@ -479,7 +479,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float
     cards = []
     for label, value, accent, note in tiles:
         note_html = (
-            f'<div style="font-size:12px; color:{accent}; font-weight:600; '
+            f'<div style="font-size:15px; color:{accent}; font-weight:600; '
             f'margin-top:3px;">{note}</div>'
             if note
             else '<div style="height:15px;"></div>'
@@ -488,7 +488,7 @@ def render_metric_cards(origin: pd.Timestamp, rows: pd.DataFrame, ref_now: float
             '<div style="flex:1 1 0; min-width:160px; background:#fffaf5; '
             'border:1px solid #eadbd0; border-radius:16px; padding:16px 20px; '
             'box-shadow:0 4px 12px rgba(91,44,18,.06);">'
-            f'<div style="font-size:11px; letter-spacing:.4px; text-transform:uppercase; '
+            f'<div style="font-size:14px; letter-spacing:.4px; text-transform:uppercase; '
             f'color:{MUTED}; font-weight:600;">{label}</div>'
             f'<div style="font-size:26px; font-weight:700; color:{INK}; '
             f'font-family:{DISPLAY_FONT}; margin-top:6px;">{value}</div>'
@@ -552,10 +552,10 @@ def render_hourly_strip(rows: pd.DataFrame) -> None:
             dedent(f"""
             <div style="min-width:62px; border-radius:16px; background:{tint(color, .10)};
                  padding:10px 6px; text-align:center; flex:0 0 auto;">
-              <div style="font-size:11px; color:{MUTED}; font-weight:600;">+{hour}h</div>
-              <div style="font-size:12px; color:{MUTED};">{row.start_time:%I:%M %p}</div>
-              <div style="font-size:21px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
-              <div style="font-size:10px; color:{chip_text};">&#9679;</div>
+              <div style="font-size:14px; color:{MUTED}; font-weight:600;">+{hour}h</div>
+              <div style="font-size:15px; color:{MUTED};">{row.start_time:%I:%M %p}</div>
+              <div style="font-size:24px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
+              <div style="font-size:13px; color:{chip_text};">&#9679;</div>
             </div>
             """)
         )
@@ -579,9 +579,9 @@ def render_block_means(rows: pd.DataFrame) -> None:
             dedent(f"""
             <div style="flex:1 1 0; min-width:130px; border-radius:16px;
                  background:{tint(color, .10)}; padding:10px 12px; text-align:center;">
-              <div style="font-size:11px; color:{MUTED}; font-weight:600;">{label}</div>
-              <div style="font-size:11px; color:{MUTED};">{row.start_time:%d %b %I:%M %p} \u2192 {row.end_time:%I:%M %p}</div>
-              <div style="font-size:22px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
+              <div style="font-size:14px; color:{MUTED}; font-weight:600;">{label}</div>
+              <div style="font-size:14px; color:{MUTED};">{row.start_time:%d %b %I:%M %p} \u2192 {row.end_time:%I:%M %p}</div>
+              <div style="font-size:25px; font-weight:600; color:{chip_text};">{row.value:.0f}</div>
             </div>
             """)
         )
@@ -636,7 +636,7 @@ def render_prediction_bar_chart(rows: pd.DataFrame) -> None:
 
     # Category legend
     legend = (
-        '<div style="font-size:11px; color:' + MUTED + '; display:flex; gap:12px; flex-wrap:wrap; padding:2px 0 8px;">'
+        '<div style="font-size:14px; color:' + MUTED + '; display:flex; gap:12px; flex-wrap:wrap; padding:2px 0 8px;">'
     )
     for low, high, cat in BAND_BOUNDS:
         c = category_color(cat)
@@ -717,7 +717,7 @@ def render_main_chart(
     )
     st.altair_chart(chart, use_container_width=True)
     swatches = (
-        f'<div style="font-size:12px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
+        f'<div style="font-size:15px; color:{MUTED}; display:flex; gap:18px; padding:2px 2px 8px; flex-wrap:wrap;">'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{ORANGE_700};border-radius:2px;"></span> Our model (Ridge)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:3px;background:{REF_GREEN};border-radius:2px;border-top:2px dashed {REF_GREEN};"></span> Live from Open-Meteo (US AQI\u202f\u200a)</span>'
         f'<span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:18px;height:6px;background:#8f2f12;border-radius:2px;"></span> Six/twelve-hour means (our model)</span>'
@@ -761,7 +761,7 @@ def comparison_frame(rows: pd.DataFrame, ref_series: pd.Series) -> pd.DataFrame:
 def render_comparison(rows: pd.DataFrame, ref_series: pd.Series) -> None:
     section_header("Comparison", "Our model vs live from Open-Meteo")
     st.markdown(
-        f'<div style="font-size:13px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
+        f'<div style="font-size:16px; color:{INFO_BLUE_TEXT}; margin-bottom:8px;">'
         "A free, keyless hourly US AQI forecast for Karak -- "
         "the same US EPA AQI scale (categories, colors, breakpoints) this project's "
         "target uses, so the two are directly comparable. Mapped onto our exact 30 "
@@ -819,7 +819,7 @@ def render_model_history() -> None:
     if registry:
         st.subheader("Model registry (MLflow)")
         st.markdown(
-            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
+            f'<div style="font-size:16px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
             "MLflow tracks every training run and registers the best-performing model for each horizon. "
             "Each row is a registered model: the name identifies the target (e.g. <b>aqi-hourly-ridge</b> = our hourly Ridge model), "
             "the version is the training iteration, and the alias (e.g. <b>champion</b>) marks which version is currently served. "
@@ -866,7 +866,7 @@ def render_model_history() -> None:
     if rolling:
         st.subheader("Rolling-origin evaluation (3 expanding folds, 72h embargo)")
         st.markdown(
-            f'<div style="font-size:13px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
+            f'<div style="font-size:16px; color:{MUTED}; margin-bottom:10px; line-height:1.6;">'
             "A more realistic evaluation than a single train/test split. The model is trained on expanding windows "
             "of historical data and tested on the next 72 hours, then the window rolls forward. "
             "The 72-hour embargo prevents data leakage (no test data overlaps with training lag features). "
@@ -943,7 +943,7 @@ def render_shap() -> None:
         return
 
     st.markdown(
-        f'<div style="font-size:13px; color:{MUTED}; margin-bottom:8px;">'
+        f'<div style="font-size:16px; color:{MUTED}; margin-bottom:8px;">'
         f'Method: {shap_data.get("method", "unknown")} | '
         f'Output: {shap_data.get("output_column", "t+1h")} | '
         f'Expected value: {shap_data.get("expected_value", 0):.1f} | '
@@ -983,7 +983,7 @@ def render_weather_insights() -> None:
     section_header("Weather insights", "Karak weather trends and AQI seasonality")
 
     st.markdown(
-        f'<div style="font-size:14px; color:{MUTED}; margin-bottom:12px; line-height:1.6;">'
+        f'<div style="font-size:17px; color:{MUTED}; margin-bottom:12px; line-height:1.6;">'
         "Long-term weather patterns in Karak influence air quality. These charts show "
         "temperature and precipitation trends from 2000 to present, and how AQI varies "
         "by season and time of day. Dust events (common in March\u2013June) and winter "
@@ -991,7 +991,7 @@ def render_weather_insights() -> None:
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<div style="font-size:12px; color:{MUTED}; margin-bottom:14px; line-height:1.5; '
+        f'<div style="font-size:15px; color:{MUTED}; margin-bottom:14px; line-height:1.5; '
         f'padding:8px 12px; background:#f6eee7; border-radius:4px;">'
         "<b>How these charts were made:</b> The weather trends chart uses historical weather data "
         "(2000\u20132026) fetched from the Open-Meteo Archive API for Karak (33.13°N, 71.54°E) — "

@@ -10,7 +10,7 @@ name: Forecast pipeline (hourly)
 
 on:
   schedule:
-    - cron: "05 * * * *"
+    - cron: "04 * * * *"
   workflow_dispatch:
   workflow_run:
     workflows: ["Training pipeline (daily)"]
