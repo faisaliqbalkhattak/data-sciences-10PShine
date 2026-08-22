@@ -139,9 +139,29 @@ def export_forecast(source: str = "live") -> Path:
                 hourly.index.min() if len(hourly) > 0 else "N/A",
                 hourly.index.max() if len(hourly) > 0 else "N/A")
 
-    # Run inference via MLflow registry
-    logger.info("Loading model from MLflow registry...")
-    forecast = predict_latest(hourly)
+    # Run inference: load model from local .joblib (downloaded from karAQI-data)
+    manifest_path = config.PROJECT_ROOT / "models" / "aqi_forecast_hourly_models.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"No model manifest at {manifest_path}. "
+            f"Run the training pipeline first, or download from karAQI-data."
+        )
+    import json as _json
+    manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    selected = manifest.get("_meta", {}).get("selected_model_by_group", {})
+    champion_name = selected.get("hourly_points", "ridge")
+    model_entry = manifest.get(champion_name, {})
+    model_rel = model_entry.get("path")
+    if not model_rel:
+        raise FileNotFoundError(f"Manifest has no artifact path for model '{champion_name}'.")
+    model_path = config.PROJECT_ROOT / model_rel
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"No trained model at {model_path}. "
+            f"Run the training pipeline first, or download from karAQI-data."
+        )
+    logger.info("Loading model '%s' from %s", champion_name, model_path)
+    forecast = predict_latest(hourly, model_path=model_path)
     logger.info("Model prediction complete: %d outputs", len(forecast))
     origin = pd.Timestamp(forecast["forecast_origin"].iloc[0])
 

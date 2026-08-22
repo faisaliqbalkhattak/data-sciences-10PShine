@@ -59,11 +59,13 @@ jobs:
             exit 1
           }
           mkdir -p models
-          cp /tmp/karAQI-data/models/aqi_forecast_hourly_ridge.joblib models/ 2>/dev/null || {
-            echo "ERROR: No trained model found in karAQI-data. Run training pipeline first."
-            exit 1
-          }
+          cp /tmp/karAQI-data/models/aqi_forecast_hourly_ridge.joblib models/ 2>/dev/null || true
+          cp /tmp/karAQI-data/models/aqi_forecast_hourly_xgb.joblib models/ 2>/dev/null || true
           cp /tmp/karAQI-data/models/aqi_forecast_hourly_models.json models/ 2>/dev/null || true
+          if [ ! -f models/aqi_forecast_hourly_models.json ]; then
+            echo "ERROR: No model manifest found in karAQI-data. Run training pipeline first."
+            exit 1
+          fi
           echo "Model loaded from karAQI-data: $(ls -la models/aqi_forecast_hourly_ridge.joblib)"
 
       - name: Export pre-computed forecast (static JSON)
