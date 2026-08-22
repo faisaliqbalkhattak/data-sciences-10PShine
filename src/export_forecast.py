@@ -153,10 +153,11 @@ def export_forecast(source: str = "live") -> Path:
     ref_data = _fetch_open_meteo_aq_forecast()
     logger.info("Open-Meteo AQ ref (raw): %d values", len(ref_data))
 
-    # Trim ref_forecast to start from the origin hour (skip past hours).
+    # Trim ref_forecast: start from origin, cap at origin + 72h.
     origin_iso = origin.isoformat()
-    ref_data = [r for r in ref_data if r["time"] >= origin_iso]
-    logger.info("Open-Meteo AQ ref (trimmed to origin %s): %d values", origin_iso, len(ref_data))
+    origin_72h = (origin + pd.Timedelta(hours=72)).isoformat()
+    ref_data = [r for r in ref_data if origin_iso <= r["time"] < origin_72h]
+    logger.info("Open-Meteo AQ ref (trimmed %s → %s): %d values", origin_iso, origin_72h, len(ref_data))
 
     # Build the outputs array
     outputs = []
