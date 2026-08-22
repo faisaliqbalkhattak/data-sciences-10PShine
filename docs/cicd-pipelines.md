@@ -19,12 +19,12 @@ feature_pipeline.yml (hourly :01)
       ▼
 training_pipeline.yml (daily 00:00 UTC)
   → Reads from DuckDB feature store
-  → Trains 4 models: Ridge, RF, XGBoost, LSTM
+  → Trains 2 models: Ridge, XGBoost
   → Champion comparison (only promotes if better)
   → Registers in MLflow
   → Pushes model files + eval JSON
       │
-      ├──► models/*.joblib, *.keras  ──────► karAQI-data/models/
+      ├──► models/*.joblib             ──────► karAQI-data/models/
       └──► data/model_eval.json      ──────► karAQI-data/data/
 
 forecast_pipeline.yml (hourly :04)
@@ -60,7 +60,7 @@ forecast_pipeline.yml (hourly :04)
 
 - **Feature at :01** — First to run each hour. Fetches latest data before forecast needs it.
 - **Forecast at :04** — Waits for feature pipeline to complete (typically takes ~1 min).
-- **Training at 00:00 UTC (05:00 PKT)** — Runs once daily, takes ~8 min (TensorFlow LSTM training). Scheduled before hourly pipelines to avoid resource contention.
+- **Training at 00:00 UTC (05:00 PKT)** — Runs once daily, takes ~5 min. Scheduled before hourly pipelines to avoid resource contention.
 
 ---
 
@@ -72,7 +72,7 @@ The training pipeline runs two training scripts:
 - name: Train models from the feature store
   run: |
     python -m src.train --store        # daily models (Ridge, RF, XGBoost, SARIMA, LSTM)
-    python -m src.train_hourly --store  # hourly 30-output models (Ridge, RF, XGBoost, LSTM)
+    python -m src.train_hourly --store  # hourly 30-output models (Ridge, XGBoost)
 ```
 
 ### Champion Comparison
@@ -92,10 +92,7 @@ The `model_eval.json` records which model was promoted and why.
 
 ```yaml
 cp models/aqi_forecast_hourly_ridge.joblib /tmp/karAQI-data/models/
-cp models/aqi_forecast_hourly_rf.joblib /tmp/karAQI-data/models/
 cp models/aqi_forecast_hourly_xgb.joblib /tmp/karAQI-data/models/
-cp models/aqi_forecast_hourly_lstm.keras /tmp/karAQI-data/models/
-cp models/aqi_forecast_hourly_scalers.joblib /tmp/karAQI-data/models/
 cp models/aqi_forecast_hourly_models.json /tmp/karAQI-data/models/
 cp models/aqi_forecast_models.json /tmp/karAQI-data/models/
 ```

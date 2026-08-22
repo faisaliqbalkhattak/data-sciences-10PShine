@@ -25,7 +25,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.metrics import (
@@ -48,9 +47,6 @@ warnings.filterwarnings("ignore")
 RANDOM_STATE = 42
 RIDGE_ALPHAS = (0.1, 1.0, 10.0, 100.0, 300.0, 1000.0)
 MAX_FORECAST_HOURS = 72
-SEQUENCE_LENGTH = 72
-LSTM_EPOCHS = 10
-LSTM_BATCH_SIZE = 128
 TARGET = "aqi_hourly_rolling"
 
 HOURLY_TARGET_COLUMNS = [f"aqi_plus_{hour:02d}h" for hour in range(1, 25)]
@@ -355,14 +351,6 @@ def run_rolling_origin_evaluation(
         )
         ridge.fit(X_train, y_train)
 
-        rf = Pipeline([
-            ("scale", StandardScaler()),
-            ("model", MultiOutputRegressor(
-                RandomForestRegressor(n_estimators=200, max_depth=15, random_state=RANDOM_STATE, n_jobs=-1)
-            )),
-        ])
-        rf.fit(X_train, y_train)
-
         xgb = Pipeline([
             ("scale", StandardScaler()),
             ("model", MultiOutputRegressor(
@@ -377,7 +365,6 @@ def run_rolling_origin_evaluation(
             "persistence": persistence_predictions(test),
             "seasonal_persistence": seasonal_persistence_predictions(frame)[test_positions],
             "ridge": ridge.predict(X_test),
-            "random_forest": rf.predict(X_test),
             "xgboost": xgb.predict(X_test),
         }
         for model_name, model_predictions in predictions.items():
@@ -406,7 +393,7 @@ def assess_release_gate(rolling_grouped: pd.DataFrame) -> dict:
     "best_ml_avg_mae", "persistence_avg_mae", "groups_beaten" (int),
     "reason" (str).
     """
-    ml_models = {"ridge", "random_forest", "xgboost"}
+    ml_models = {"ridge", "xgboost"}
 
     # Average RMSE and MAE across all groups for the best ML model and persistence
     ml_rows = rolling_grouped[rolling_grouped["model"].isin(ml_models)]
@@ -500,102 +487,6 @@ def seasonal_persistence_predictions(frame: pd.DataFrame) -> np.ndarray:
     return result
 
 
-def train_multioutput_lstm(
-    X_train: pd.DataFrame,
-    y_train: pd.DataFrame,
-    X_context: pd.DataFrame,
-    test_index: pd.Index,
-    sequence_length: int = SEQUENCE_LENGTH,
-    epochs: int = LSTM_EPOCHS,
-) -> dict:
-    """Train one LSTM encoder with hourly, six-hour, and twelve-hour heads."""
-    try:
-        import tensorflow as tf
-    except ImportError:
-        return {"available": False}
-
-    if len(X_train) <= sequence_length:
-        return {"available": False}
-
-    input_scaler = StandardScaler().fit(X_train)
-    target_scalers = [
-        StandardScaler().fit(y_train.iloc[:, start:end])
-        for start, end in ((0, 24), (24, 28), (28, 30))
-    ]
-    train_x = input_scaler.transform(X_train)
-    train_y = np.column_stack(
-        [
-            scaler.transform(y_train.iloc[:, start:end])
-            for scaler, (start, end) in zip(
-                target_scalers, ((0, 24), (24, 28), (28, 30))
-            )
-        ]
-    )
-
-    sequences = []
-    labels = []
-    for position in range(sequence_length - 1, len(train_x)):
-        sequences.append(train_x[position - sequence_length + 1 : position + 1])
-        labels.append(train_y[position])
-    sequences = np.asarray(sequences)
-    labels = np.asarray(labels)
-
-    tf.keras.utils.set_random_seed(RANDOM_STATE)
-    inputs = tf.keras.Input(shape=(sequence_length, train_x.shape[1]))
-    encoded = tf.keras.layers.LSTM(64, return_sequences=True)(inputs)
-    encoded = tf.keras.layers.Dropout(0.2)(encoded)
-    encoded = tf.keras.layers.LSTM(32)(encoded)
-    hourly_head = tf.keras.layers.Dense(24, name="hourly_points")(encoded)
-    six_hour_head = tf.keras.layers.Dense(4, name="six_hour_means")(encoded)
-    twelve_hour_head = tf.keras.layers.Dense(2, name="twelve_hour_means")(encoded)
-    model = tf.keras.Model(
-        inputs=inputs, outputs=[hourly_head, six_hour_head, twelve_hour_head]
-    )
-    model.compile(optimizer="adam", loss="mse")
-    model.fit(
-        sequences,
-        [labels[:, :24], labels[:, 24:28], labels[:, 28:]],
-        epochs=epochs,
-        batch_size=LSTM_BATCH_SIZE,
-        validation_split=0.1,
-        verbose=0,
-    )
-
-    context_x = input_scaler.transform(X_context)
-    first_test_position = X_context.index.get_loc(test_index[0])
-    test_sequences = np.asarray(
-        [
-            context_x[position - sequence_length + 1 : position + 1]
-            for position in range(
-                first_test_position, first_test_position + len(test_index)
-            )
-        ]
-    )
-    scaled_parts = model.predict(test_sequences, verbose=0)
-    scaled_prediction = np.column_stack(scaled_parts)
-    prediction = np.column_stack(
-        [
-            scaler.inverse_transform(scaled_prediction[:, start:end])
-            for scaler, (start, end) in zip(
-                target_scalers, ((0, 24), (24, 28), (28, 30))
-            )
-        ]
-    )
-    return {
-        "available": True,
-        "model": model,
-        "input_scaler": input_scaler,
-        "target_scalers": target_scalers,
-        "predictions": prediction,
-        "params": {
-            "sequence_length": sequence_length,
-            "epochs": epochs,
-            "batch_size": LSTM_BATCH_SIZE,
-            "heads": {"hourly_points": 24, "six_hour_means": 4, "twelve_hour_means": 2},
-        },
-    }
-
-
 def newest_hourly_features() -> Path:
     path = config.DATA_PROCESSED_DIR / "karak_aqi_open_meteo_hourly_features.csv"
     if not path.exists():
@@ -657,24 +548,6 @@ def main(from_store: bool = False) -> None:
     }
     joblib.dump(ridge, MODELS_DIR / "aqi_forecast_hourly_ridge.joblib")
 
-    # Random Forest (multi-output)
-    rf = Pipeline([
-        ("scale", StandardScaler()),
-        ("model", MultiOutputRegressor(
-            RandomForestRegressor(n_estimators=200, max_depth=15, random_state=RANDOM_STATE, n_jobs=-1)
-        )),
-    ])
-    rf.fit(X_train, y_train)
-    rf_predictions = rf.predict(X_test)
-    rf_rows, rf_groups = evaluate_outputs(y_test, rf_predictions, "random_forest")
-    rows.extend(rf_rows)
-    artifacts["random_forest"] = {
-        "path": "models/aqi_forecast_hourly_rf.joblib",
-        "params": {"n_estimators": 200, "max_depth": 15},
-        "metrics_by_group": rf_groups,
-    }
-    joblib.dump(rf, MODELS_DIR / "aqi_forecast_hourly_rf.joblib")
-
     # XGBoost (multi-output)
     xgb = Pipeline([
         ("scale", StandardScaler()),
@@ -693,32 +566,6 @@ def main(from_store: bool = False) -> None:
         "metrics_by_group": xgb_groups,
     }
     joblib.dump(xgb, MODELS_DIR / "aqi_forecast_hourly_xgb.joblib")
-
-    lstm = train_multioutput_lstm(
-        X_train,
-        y_train,
-        frame.loc[: test.index[-1], feature_columns],
-        test.index,
-    )
-    if lstm["available"]:
-        lstm_rows, lstm_groups = evaluate_outputs(
-            y_test, lstm["predictions"], "lstm"
-        )
-        rows.extend(lstm_rows)
-        artifacts["lstm"] = {
-            "path": "models/aqi_forecast_hourly_lstm.keras",
-            "scalers_path": "models/aqi_forecast_hourly_scalers.joblib",
-            "params": lstm["params"],
-            "metrics_by_group": lstm_groups,
-        }
-        lstm["model"].save(MODELS_DIR / "aqi_forecast_hourly_lstm.keras")
-        joblib.dump(
-            {
-                "input": lstm["input_scaler"],
-                "targets": lstm["target_scalers"],
-            },
-            MODELS_DIR / "aqi_forecast_hourly_scalers.joblib",
-        )
 
     comparison = pd.DataFrame(rows)
     comparison.to_csv(
@@ -744,7 +591,7 @@ def main(from_store: bool = False) -> None:
             f"Hourly release gate failed: {release_gate['reason']}"
         )
     # Select the best model per group from all trained models
-    ml_models = ["ridge", "random_forest", "xgboost"]
+    ml_models = ["ridge", "xgboost"]
     selected_by_group = {}
     for group in sorted(rolling_grouped["group"].unique()):
         group_rows = rolling_grouped[

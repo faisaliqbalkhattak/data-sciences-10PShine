@@ -133,7 +133,7 @@ Baselines kept: Persistence (naive), Ridge/MLR.
 
 ### Hourly 30-output forecast (the model serving predictions)
 
-Four models trained: Ridge, Random Forest, XGBoost, LSTM.
+Two models trained in CI: Ridge and XGBoost. LSTM and Random Forest were evaluated during development but removed from CI: LSTM took 1+ hour to train on CPU (GitHub Actions has no GPU) and had the worst RMSE (24.21); Random Forest produced a 4.25 GB model file that exceeds GitHub's 100 MB file size limit.
 
 Rolling-origin evaluation (3 expanding folds, 168h test windows, 72h embargo):
 
@@ -240,12 +240,12 @@ training_pipeline.yml (daily 00:00 UTC)
   → src/ingest.py (incremental fetch)
   → src/build_features.py (feature engineering)
   → src/feature_store.py (DuckDB rebuild)
-  → src/train.py + src/train_hourly.py (train 4 models each)
+  → src/train.py (train 6 daily models) + src/train_hourly.py (train 2 hourly models: Ridge, XGBoost)
   → Champion comparison (only promote if better)
   → src/model_registry.py (MLflow register)
   → src/export_eval.py (evaluation JSON)
       │
-      ├──► models/*.joblib, *.keras  ──────► karAQI-data/models/
+      ├──► models/*.joblib             ──────► karAQI-data/models/
       └──► data/model_eval.json      ──────► karAQI-data/data/
 
 forecast_pipeline.yml (hourly :04)

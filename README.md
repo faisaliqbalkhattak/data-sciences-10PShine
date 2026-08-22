@@ -50,8 +50,8 @@ All pipelines run on GitHub Actions. See [docs/cicd-pipelines.md](docs/cicd-pipe
 | Workflow | Schedule (UTC) | What it does | Output |
 |---|---|---|---|
 | `feature_pipeline.yml` | Hourly at `:01` | Incremental data fetch (~1 row), build features, run tests | Feature store (DuckDB) |
-| `forecast_pipeline.yml` | Hourly at `:04` | Run Ridge inference, fetch Open-Meteo AQ forecast, export JSON | `static_forecast.json` → karAQI-data |
-| `training_pipeline.yml` | Daily at `00:00` | Incremental fetch, train 4 models (Ridge/RF/XGBoost/LSTM), champion comparison, register in MLflow, export eval JSON | `model_eval.json` + model files → karAQI-data |
+| `forecast_pipeline.yml` | Hourly at `:04` | Run best model inference, fetch Open-Meteo AQ forecast, export JSON | `static_forecast.json` → karAQI-data |
+| `training_pipeline.yml` | Daily at `00:00` | Incremental fetch, train Ridge + XGBoost, champion comparison, register in MLflow, export eval JSON | `model_eval.json` + model files → karAQI-data |
 
 > **Incremental fetching:** The feature pipeline runs hourly and fetches only the new data since the last pull (typically ~1 row). Open-Meteo reanalysis data is immutable — historical values never change — so incremental fetching is safe and avoids re-downloading 4 years of data on every run. See [docs/data-sources.md](docs/data-sources.md).
 
@@ -63,7 +63,7 @@ All pipelines run on GitHub Actions. See [docs/cicd-pipelines.md](docs/cicd-pipe
 
 ## Model Performance (Live Dashboard Metrics)
 
-The training pipeline trains **4 models** for the hourly 30-output forecast: Ridge, Random Forest, XGBoost, and LSTM. The champion is selected by lowest RMSE on the primary output group (hourly points). The model producing predictions on the dashboard is whatever won the champion comparison.
+The training pipeline trains **2 models** for the hourly 30-output forecast: Ridge and XGBoost. LSTM and Random Forest were evaluated during development but removed from CI: LSTM took 1+ hour to train on CPU (GitHub Actions) and had the worst RMSE (24.21); Random Forest produced a 4.25 GB model file that exceeds GitHub's 100 MB file size limit. The champion is selected by lowest RMSE on the primary output group (hourly points).
 
 30 outputs per forecast origin: 24 hourly points (`t+1h` through `t+24h`), four six-hour block means (`t+25h` through `t+48h`), and two twelve-hour block means (`t+49h` through `t+72h`).
 
@@ -186,7 +186,7 @@ python -m src.feature_store backfill-hourly --replace
 python -m src.feature_store backfill-daily --replace
 
 # 3. Train modelspython -m src.train --store # daily models
-python -m src.train_hourly --store # hourly models (Ridge, RF, XGBoost, LSTM)
+python -m src.train_hourly --store # hourly models (Ridge, XGBoost)
 # 4. Register champion (with comparison against current best)
 python -m src.model_registry register-hourly
 
@@ -205,10 +205,24 @@ streamlit run app/dashboard.py
 
 ---
 
-## Feature Store and Model Registry| Component | Implementation | Why |
+## Feature Store and Model Registry
+
+| Component | Implementation | Why |
 |---|---|---|
 | Feature store | DuckDB (`data/feature_store/karak_feature_store.duckdb`) | Serverless, no API key, free, works on Windows |
 | Model registry | MLflow file-backed (`models/mlruns/`) | No tracking server needed, satisfies serverless requirement |
+
+### What a Model Registry Is
+
+A model registry manages the full ML model lifecycle: version control, staging (dev → staging → production), metadata tracking (metrics, parameters, data lineage), and access control. Industry examples include MLflow Model Registry (server-backed), Vertex AI Model Registry, and Hopsworks.
+
+### What We Use
+
+Our MLflow instance is **file-backed** — it stores model versions and metadata in local `mlruns/` directories, not on a persistent server. The trained model binary (`.joblib`) is also pushed to the `karAQI-data` GitHub repo so the forecast pipeline can download it. This functions as a lightweight model registry: it tracks which model version is the champion, logs metrics, and supports version-based loading. For a production system, a server-backed registry (e.g., MLflow Tracking Server on Databricks, Vertex AI) would provide stronger guarantees around access control, audit trails, and model serving integration. For this project's scale and the assignment's serverless requirement, the file-backed approach is sufficient.
+
+### Why Model Files Are Also in GitHub
+
+The `karAQI-data` repo stores the actual model binaries (`.joblib` files) because the forecast pipeline on GitHub Actions needs to download them before running inference. MLflow's file-backed store only exists within the CI runner (ephemeral), so the model files must be persisted somewhere the forecast pipeline can access them. GitHub repo storage serves as the durable artifact store.
 
 The feature store is used by the **training and forecast pipelines** (not the dashboard). The forecast pipeline reads features from DuckDB (`--source store`). The model registry is used by the **forecast pipeline** to load the champion model for inference. The dashboard reads pre-computed JSON for speed.
 

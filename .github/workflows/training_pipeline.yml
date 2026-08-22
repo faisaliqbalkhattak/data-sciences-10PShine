@@ -91,10 +91,7 @@ jobs:
           fi
           # Push trained model files (needed by forecast pipeline for inference)
           cp models/aqi_forecast_hourly_ridge.joblib /tmp/karAQI-data/models/ 2>/dev/null || true
-          cp models/aqi_forecast_hourly_rf.joblib /tmp/karAQI-data/models/ 2>/dev/null || true
           cp models/aqi_forecast_hourly_xgb.joblib /tmp/karAQI-data/models/ 2>/dev/null || true
-          cp models/aqi_forecast_hourly_lstm.keras /tmp/karAQI-data/models/ 2>/dev/null || true
-          cp models/aqi_forecast_hourly_scalers.joblib /tmp/karAQI-data/models/ 2>/dev/null || true
           cp models/aqi_forecast_hourly_models.json /tmp/karAQI-data/models/ 2>/dev/null || true
           cp models/aqi_forecast_models.json /tmp/karAQI-data/models/ 2>/dev/null || true
           cd /tmp/karAQI-data
