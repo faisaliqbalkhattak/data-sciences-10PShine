@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -28,8 +28,13 @@ class TestExportForecast:
         )
         mock_hourly.index.name = "time"
 
+        # Mock both data loading and MLflow registry
+        mock_model = MagicMock()
+        mock_model.predict.return_value = [list(range(30))]
+
         with (
             patch("app.live_data.load_latest_hourly", return_value=mock_hourly),
+            patch("src.model_registry.load_hourly_model", return_value=mock_model),
         ):
             import src.export_forecast as ef
 

@@ -289,36 +289,24 @@ def _load_pipeline(path: Path):
 
 
 def load_hourly_model(store_dir: Optional[Path] = None):
-    """Load the champion hourly model, falling back to the local manifest artifact.
+    """Load the champion hourly model from MLflow registry.
 
-    Prefers the MLflow-registered version so the forecast pipeline uses whatever
-    the training pipeline accepted last. Falls back to the local joblib so the
-    pipeline and tests work even before the first registry run.
+    The training pipeline must run first and register the model.
+    This function does NOT fall back to local artifacts — if the
+    registry is empty, it raises an error so the pipeline fails loudly.
     """
     import mlflow
 
+    mlflow.set_tracking_uri(_tracking_uri(store_dir))
     try:
-        mlflow.set_tracking_uri(_tracking_uri(store_dir))
-        return mlflow.pyfunc.load_model(f"models:/{HOURLY_MODEL_NAME}@{CHAMPION_ALIAS}")
-    except Exception as exc:  # noqa: BLE001 - registry may be empty on first run
-        logger.info("MLflow champion not found (%s); falling back to local artifact.", exc)
-        # Try to find any local model artifact
-        manifest = _load_manifest(HOURLY_MANIFEST)
-        meta = manifest.get("_meta", {})
-        selected = meta.get("selected_model_by_group", {})
-        best_model = selected.get("hourly_points", "ridge")
-        entry = manifest.get(best_model, {})
-        artifact_path = entry.get("path")
-        if artifact_path:
-            artifact = _resolve_artifact(artifact_path, None)
-            if artifact.exists():
-                return _load_pipeline(artifact)
-        # Final fallback: try Ridge
-        if RIDGE_ARTIFACT.exists():
-            return _load_pipeline(RIDGE_ARTIFACT)
+        model = mlflow.pyfunc.load_model(f"models:/{HOURLY_MODEL_NAME}@{CHAMPION_ALIAS}")
+        logger.info("Loaded champion '%s' from MLflow registry", HOURLY_MODEL_NAME)
+        return model
+    except Exception as exc:
         raise FileNotFoundError(
-            "No registered hourly model and no local artifact; run "
-            "`python -m src.train_hourly` first."
+            f"MLflow registry has no champion for '{HOURLY_MODEL_NAME}'. "
+            f"Run the training pipeline first: python -m src.train_hourly --store && "
+            f"python -m src.model_registry register-hourly"
         ) from exc
 
 

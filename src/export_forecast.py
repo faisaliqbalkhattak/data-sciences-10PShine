@@ -132,18 +132,17 @@ def export_forecast(source: str = "live") -> Path:
 
     logger.info("Exporting forecast (source=%s)", source)
 
-    # Load the latest hourly observations
-    try:
-        hourly = load_latest_hourly(source)
-    except Exception:
-        if source == "store":
-            logger.warning("Store empty, falling back to live")
-            hourly = load_latest_hourly("live")
-        else:
-            raise
+    # Load the latest hourly observations from the feature store
+    hourly = load_latest_hourly(source)
+    logger.info("Loaded %d hourly rows from %s (range: %s to %s)",
+                len(hourly), source,
+                hourly.index.min() if len(hourly) > 0 else "N/A",
+                hourly.index.max() if len(hourly) > 0 else "N/A")
 
-    # Run inference
+    # Run inference via MLflow registry
+    logger.info("Loading model from MLflow registry...")
     forecast = predict_latest(hourly)
+    logger.info("Model prediction complete: %d outputs", len(forecast))
     origin = pd.Timestamp(forecast["forecast_origin"].iloc[0])
 
     # Current hour AQI from observed data
